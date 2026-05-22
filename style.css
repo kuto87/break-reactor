@@ -35,8 +35,10 @@ button {
   position: fixed;
   left: 50%;
   top: 50%;
-  width: min(100vw, 420px, calc(100dvh * 0.583333));
-  height: min(100dvh, 720px, calc(100vw * 1.714286));
+  width: 100vw;
+  max-width: 420px;
+  height: calc(100vw * 1.714286);
+  max-height: 720px;
   transform: translate(-50%, -50%);
   transform-origin: center;
   background: #050611;
@@ -68,19 +70,20 @@ button {
 
 #upgradePanel {
   position: absolute;
-  left: auto;
+  left: 10px;
   right: 12px;
   bottom: 4px;
   z-index: 4;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
-  width: min(396px, calc(100% - 24px));
+  gap: 6px;
+  width: auto;
   pointer-events: none;
 }
 
 .upgrade-button {
-  min-height: 38px;
+  min-height: 36px;
+  padding: 4px 3px;
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 8px;
   color: #f8feff;
@@ -102,9 +105,10 @@ button {
 }
 
 .upgrade-button span {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .upgrade-button strong {
@@ -229,6 +233,10 @@ button {
 
 @media (min-aspect-ratio: 7 / 10) {
   #gameShell {
+    width: calc(100dvh * 0.583333);
+    height: 100dvh;
+    max-width: 420px;
+    max-height: 720px;
     border-radius: 10px;
     overflow: hidden;
   }

@@ -6,9 +6,9 @@ const INITIAL_LIVES = 3;
 const MAX_LIVES = 5;
 const INITIAL_PADDLE_WIDTH = 90;
 const PADDLE_HEIGHT = 14;
-const PADDLE_Y = 660;
+const PADDLE_Y = 618;
 const BALL_RADIUS = 7;
-const INITIAL_BALL_SPEED = 5.5;
+const INITIAL_BALL_SPEED = 5.1;
 const MAX_BALLS = 30;
 const BRICK_COLS = 10;
 const BRICK_WIDTH = 36;
@@ -26,6 +26,7 @@ const SHIELD_COST = 30;
 const WIDE_COST = 18;
 const MULTI_COST = 24;
 const STORAGE_KEY = "breakReactorBestScore";
+const SFX_VOLUME = 0.22;
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -66,11 +67,24 @@ const itemTable = [
 ];
 
 const brickStyles = {
-  normal: { color: "#9b6238", dark: "#5a321d", light: "#d7a060", score: 1 },
+  normal: { color: "#6f8fa3", dark: "#2d4655", light: "#b9d8e2", score: 1 },
   hard: { color: "#8d8f96", dark: "#45484f", light: "#c9cbd0", score: 1.4 },
   bomb: { color: "#b65a42", dark: "#612b23", light: "#ff9a72", score: 1.2 },
   coin: { color: "#ad7836", dark: "#5b3b19", light: "#e5b665", score: 1.1 },
   item: { color: "#7e7049", dark: "#403725", light: "#c8b77b", score: 1.1 }
+};
+
+const materialStyles = {
+  normal: { name: "通常", color: "#6f8fa3", dark: "#2d4655", light: "#b9d8e2", crack: "#17242c" },
+  wood: { name: "木", color: "#9b6238", dark: "#5a321d", light: "#d7a060", crack: "#3e2212" },
+  stone: { name: "石", color: "#7d8289", dark: "#3b4047", light: "#c3c8ce", crack: "#262a31" },
+  metal: { name: "鋼", color: "#6f7686", dark: "#272c36", light: "#d6dbe7", crack: "#11151c" }
+};
+
+const audio = {
+  ctx: null,
+  master: null,
+  enabled: false
 };
 
 const state = {
@@ -179,22 +193,39 @@ function resetGame() {
 function bindEvents() {
   canvas.addEventListener("pointermove", handlePointer);
   canvas.addEventListener("pointerdown", (event) => {
+    unlockAudio();
     handlePointer(event);
     launchBall();
   });
-  pauseButton.addEventListener("click", togglePause);
-  resumeButton.addEventListener("click", togglePause);
+  pauseButton.addEventListener("click", () => {
+    unlockAudio();
+    togglePause();
+  });
+  resumeButton.addEventListener("click", () => {
+    unlockAudio();
+    togglePause();
+  });
   restartPauseButton.addEventListener("click", resetGame);
   restartGameButton.addEventListener("click", resetGame);
-  buyLaserButton.addEventListener("click", buyLaser);
-  buyShieldButton.addEventListener("click", buyShield);
-  shopButton.addEventListener("click", openShop);
+  buyLaserButton.addEventListener("click", () => {
+    unlockAudio();
+    buyLaser();
+  });
+  buyShieldButton.addEventListener("click", () => {
+    unlockAudio();
+    buyShield();
+  });
+  shopButton.addEventListener("click", () => {
+    unlockAudio();
+    openShop();
+  });
   closeShopButton.addEventListener("click", closeShop);
   shopLaserButton.addEventListener("click", buyLaser);
   shopShieldButton.addEventListener("click", buyShield);
   shopWideButton.addEventListener("click", buyWide);
   shopMultiButton.addEventListener("click", buyMulti);
   window.addEventListener("keydown", (event) => {
+    unlockAudio();
     if (event.code === "KeyP") togglePause();
     if (event.code === "KeyR") resetGame();
     if (event.code === "Space") {
@@ -298,6 +329,8 @@ function updateBalls(dt) {
       ball.y = 56 + ball.r;
       ball.vy = Math.abs(ball.vy);
     }
+
+    tuneBallSpeed(ball, dt);
   }
 
   state.balls = state.balls.filter((ball) => ball.y < GAME_HEIGHT + 42);
@@ -341,7 +374,7 @@ function generateWave() {
   }
 
   const rows = clamp(3 + Math.floor(state.wave / 2), 3, 7);
-  const hpBase = 1 + Math.floor(Math.max(0, state.wave - 2) / 3);
+  const hpBase = clamp(1 + Math.floor(Math.max(0, state.wave - 2) / 2), 1, 4);
   const specialRate = clamp(0.06 + state.wave * 0.014, 0.06, 0.28);
   const countChance = clamp(0.7 + state.wave * 0.022, 0.7, 0.94);
   const left = (GAME_WIDTH - (BRICK_COLS * BRICK_WIDTH + (BRICK_COLS - 1) * BRICK_GAP)) / 2;
@@ -350,9 +383,9 @@ function generateWave() {
     for (let col = 0; col < BRICK_COLS; col += 1) {
       if (Math.random() > countChance) continue;
       const type = state.wave <= 2 ? "normal" : Math.random() < specialRate ? pickBrickType() : "normal";
-      const hpBonus = type === "hard" ? 2 : type === "normal" ? 0 : 1;
+      const hpBonus = type === "hard" ? 1 : type === "normal" ? 0 : 0;
       const earlyEasy = state.wave <= 2 && type !== "hard";
-      const maxHp = earlyEasy ? 1 : Math.max(1, hpBase + hpBonus + (Math.random() < 0.18 ? 1 : 0));
+      const maxHp = earlyEasy ? 1 : clamp(hpBase + hpBonus + (Math.random() < 0.14 ? 1 : 0), 1, 4);
       addBrick(left + col * (BRICK_WIDTH + BRICK_GAP), BRICK_START_Y + row * (BRICK_HEIGHT + BRICK_GAP), type, maxHp);
     }
   }
@@ -441,6 +474,7 @@ function damageBrick(brick, amount = 1, sourceX = brick.x + brick.w / 2, sourceY
   brick.hp -= amount;
   burst(sourceX, sourceY, brickStyles[brick.type].color, 5, 2);
   if (brick.hp <= 0) destroyBrick(brick, sourceX, sourceY);
+  else playSfx("chip");
 }
 
 function destroyBrick(brick, x = brick.x + brick.w / 2, y = brick.y + brick.h / 2) {
@@ -466,6 +500,7 @@ function destroyBrick(brick, x = brick.x + brick.w / 2, y = brick.y + brick.h / 
   state.hitStop = Math.max(state.hitStop, brick.type === "bomb" ? 0.055 : 0.018);
 
   if (brick.type === "bomb") explodeAt(x, y, 74, 1);
+  playSfx(brick.type === "bomb" ? "explosion" : "break");
   if (Math.random() < ITEM_DROP_RATE + permanentUpgrades.itemDropBonus + (brick.type === "item" ? 0.3 : 0)) spawnItem(x, y);
   if (Math.random() < COIN_DROP_RATE + permanentUpgrades.coinDropBonus + (brick.type === "coin" ? 0.48 : 0)) spawnCoin(x, y, brick.type === "coin" ? 2 : COIN_VALUE);
 }
@@ -507,6 +542,7 @@ function applyItem(type) {
   if (type === "shield") state.effects.shield = Math.min(3, state.effects.shield + 1);
   if (type === "slow") state.effects.slow += 8;
   addPopup(itemName(type), state.paddle.x, state.paddle.y - 46, itemColor(type), 1.1);
+  playSfx("item");
   burst(state.paddle.x, state.paddle.y - 10, itemColor(type), 24, 4);
 }
 
@@ -515,6 +551,7 @@ function buyLaser() {
   state.coins -= LASER_COST;
   state.effects.laser += 5;
   addPopup("レーザー", state.paddle.x, state.paddle.y - 52, "#49c7ff", 1);
+  playSfx("buy");
   updateButtons();
 }
 
@@ -523,6 +560,7 @@ function buyShield() {
   state.coins -= SHIELD_COST;
   state.effects.shield += 1;
   addPopup("シールド", state.paddle.x, state.paddle.y - 52, "#68d17a", 1);
+  playSfx("buy");
   updateButtons();
 }
 
@@ -531,6 +569,7 @@ function buyWide() {
   state.coins -= WIDE_COST;
   state.effects.wide += 10;
   addPopup("ワイド", state.paddle.x, state.paddle.y - 52, "#49c7ff", 1);
+  playSfx("buy");
   updateButtons();
 }
 
@@ -538,6 +577,7 @@ function buyMulti() {
   if (!canBuy() || state.coins < MULTI_COST) return;
   state.coins -= MULTI_COST;
   applyItem("multi");
+  playSfx("buy");
   updateButtons();
 }
 
@@ -588,7 +628,8 @@ function checkCollisions() {
       ball.vx = Math.cos(angle) * speed;
       ball.vy = Math.sin(angle) * speed;
       ball.y = paddleRect.y - ball.r - 1;
-      burst(ball.x, ball.y, "#35e9ff", 5, 2.5);
+      playSfx("paddle");
+      burst(ball.x, ball.y, "#49c7ff", 5, 2.5);
     }
 
     if (state.boss && circleRect(ball, state.boss)) {
@@ -618,6 +659,7 @@ function checkCollisions() {
       state.coinDrops.splice(state.coinDrops.indexOf(coin), 1);
       state.coins += coin.value;
       addPopup(`+${coin.value} COIN`, coin.x, coin.y, "#ffe668", 0.72);
+      playSfx("coin");
       burst(coin.x, coin.y, "#ffe668", 16, 3);
     }
   }
@@ -637,6 +679,7 @@ function damageBoss(amount, x, y) {
     state.shake = 22;
     state.hitStop = 0.12;
     state.boss = null;
+    playSfx("bossDown");
     advanceWave();
   }
 }
@@ -656,6 +699,7 @@ function updateEffects(dt) {
 function fireLaser(x) {
   const laser = { x, y: state.paddle.y - 8, life: 0.14 };
   state.lasers.push(laser);
+  playSfx("laser");
   for (const brick of [...state.bricks]) {
     if (x >= brick.x && x <= brick.x + brick.w && brick.y + brick.h < state.paddle.y) {
       damageBrick(brick, 1, x, brick.y + brick.h);
@@ -703,6 +747,7 @@ function closeShop() {
 function gameOver() {
   state.gameEnded = true;
   state.running = false;
+  playSfx("gameOver");
   if (state.score > Number(localStorage.getItem(STORAGE_KEY) || 0)) {
     localStorage.setItem(STORAGE_KEY, String(state.score));
   }
@@ -741,20 +786,25 @@ function drawBackground() {
   const bossTint = state.boss || state.warningTimer > 0;
   const fever = state.feverTimer > 0;
   const gradient = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-  gradient.addColorStop(0, bossTint ? "#231018" : fever ? "#18202b" : "#101318");
-  gradient.addColorStop(0.55, fever ? "#1f2430" : "#141018");
-  gradient.addColorStop(1, "#08090c");
+  gradient.addColorStop(0, bossTint ? "#211414" : fever ? "#1f251d" : "#12171b");
+  gradient.addColorStop(0.55, fever ? "#211d17" : "#161412");
+  gradient.addColorStop(1, "#080806");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
   ctx.globalAlpha = fever ? 0.34 : 0.18;
-  ctx.strokeStyle = fever ? "#ffe48c" : "#31404a";
+  ctx.strokeStyle = fever ? "#ffe48c" : "#3b342b";
   ctx.lineWidth = 1;
   for (let y = 60; y < GAME_HEIGHT; y += 34) {
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(GAME_WIDTH, y + Math.sin(y * 0.05 + performance.now() * 0.002) * 8);
     ctx.stroke();
+  }
+  ctx.globalAlpha = 0.08;
+  ctx.fillStyle = "#d7a060";
+  for (let x = -20; x < GAME_WIDTH; x += 52) {
+    ctx.fillRect(x, 56, 1, GAME_HEIGHT - 110);
   }
   ctx.globalAlpha = 1;
 }
@@ -820,14 +870,15 @@ function drawBossHp() {
 function drawBricks() {
   for (const brick of state.bricks) {
     const style = brickStyles[brick.type];
+    const material = getBrickMaterial(brick);
     const hpRatio = brick.hp / brick.maxHp;
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.45)";
     ctx.shadowBlur = 8;
     const grad = ctx.createLinearGradient(brick.x, brick.y, brick.x, brick.y + brick.h);
-    grad.addColorStop(0, style.light);
-    grad.addColorStop(0.45, style.color);
-    grad.addColorStop(1, style.dark);
+    grad.addColorStop(0, material.light);
+    grad.addColorStop(0.48, material.color);
+    grad.addColorStop(1, material.dark);
     ctx.fillStyle = grad;
     roundRect(brick.x, brick.y, brick.w, brick.h, 5);
     ctx.fill();
@@ -836,16 +887,18 @@ function drawBricks() {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.strokeStyle = "rgba(62,34,18,0.38)";
+    ctx.strokeStyle = material.crack;
+    ctx.globalAlpha = 0.36;
     ctx.beginPath();
     ctx.moveTo(brick.x + 6, brick.y + 6);
     ctx.lineTo(brick.x + brick.w - 7, brick.y + 4 + Math.sin(brick.pulse) * 1.5);
     ctx.moveTo(brick.x + 7, brick.y + brick.h - 6);
     ctx.lineTo(brick.x + brick.w - 6, brick.y + brick.h - 7);
     ctx.stroke();
+    ctx.globalAlpha = 1;
 
     if (brick.hp < brick.maxHp) {
-      ctx.strokeStyle = "rgba(20,12,8,0.58)";
+      ctx.strokeStyle = material.crack;
       ctx.beginPath();
       ctx.moveTo(brick.x + brick.w * 0.26, brick.y + 4);
       ctx.lineTo(brick.x + brick.w * 0.42, brick.y + brick.h - 5);
@@ -865,7 +918,7 @@ function drawBricks() {
     ctx.font = "900 10px Segoe UI, Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const glyph = brick.maxHp > 1 ? String(brick.hp) : brickGlyph(brick.type);
+    const glyph = brick.maxHp > 1 ? material.name : brickGlyph(brick.type);
     if (glyph) ctx.fillText(glyph, brick.x + brick.w / 2, brick.y + brick.h / 2 + 1);
     ctx.restore();
   }
@@ -907,11 +960,11 @@ function drawPaddle() {
     ctx.stroke();
   }
   const grad = ctx.createLinearGradient(rect.x, rect.y, rect.x + rect.w, rect.y);
-  grad.addColorStop(0, "#35e9ff");
-  grad.addColorStop(0.5, "#ffffff");
-  grad.addColorStop(1, "#ff3df2");
-  ctx.shadowColor = "#35e9ff";
-  ctx.shadowBlur = 18;
+  grad.addColorStop(0, "#6f8fa3");
+  grad.addColorStop(0.5, "#f1dec0");
+  grad.addColorStop(1, "#9b6238");
+  ctx.shadowColor = "#49c7ff";
+  ctx.shadowBlur = 13;
   ctx.fillStyle = grad;
   roundRect(rect.x, rect.y, rect.w, rect.h, 7);
   ctx.fill();
@@ -1094,8 +1147,18 @@ function scoreMultiplier() {
 }
 
 function getBallSpeed() {
-  const base = INITIAL_BALL_SPEED + Math.min(2.4, state.wave * 0.06);
+  const comboBoost = Math.min(0.8, state.combo * 0.006);
+  const base = INITIAL_BALL_SPEED + Math.min(2.8, state.wave * 0.11) + comboBoost;
   return state.effects.slow > 0 ? base * 0.76 : base;
+}
+
+function tuneBallSpeed(ball, dt) {
+  if (!ball.launched) return;
+  const target = getBallSpeed();
+  const current = Math.hypot(ball.vx, ball.vy) || target;
+  const next = lerp(current, target, Math.min(1, dt * 0.9));
+  ball.vx = (ball.vx / current) * next;
+  ball.vy = (ball.vy / current) * next;
 }
 
 function getPaddleRect() {
@@ -1152,6 +1215,48 @@ function setOverlay(element, visible) {
   element.setAttribute("aria-hidden", String(!visible));
 }
 
+function unlockAudio() {
+  if (audio.enabled) return;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  audio.ctx = audio.ctx || new AudioContext();
+  audio.master = audio.master || audio.ctx.createGain();
+  audio.master.gain.value = SFX_VOLUME;
+  audio.master.connect(audio.ctx.destination);
+  audio.ctx.resume();
+  audio.enabled = true;
+}
+
+function playSfx(type) {
+  if (!audio.enabled || !audio.ctx) return;
+  const now = audio.ctx.currentTime;
+  const sounds = {
+    paddle: [[260, 0.045, "triangle", 0.48], [520, 0.035, "sine", 0.18]],
+    chip: [[180, 0.035, "square", 0.18]],
+    break: [[160, 0.055, "triangle", 0.42], [96, 0.08, "sawtooth", 0.16]],
+    explosion: [[82, 0.16, "sawtooth", 0.5], [44, 0.18, "square", 0.22]],
+    coin: [[820, 0.045, "sine", 0.38], [1240, 0.06, "sine", 0.24]],
+    item: [[460, 0.07, "triangle", 0.36], [720, 0.09, "sine", 0.25]],
+    buy: [[360, 0.06, "triangle", 0.28], [620, 0.08, "sine", 0.2]],
+    laser: [[980, 0.045, "sawtooth", 0.16]],
+    bossDown: [[120, 0.18, "sawtooth", 0.48], [260, 0.22, "triangle", 0.24]],
+    gameOver: [[180, 0.18, "triangle", 0.28], [90, 0.24, "sine", 0.26]]
+  };
+  for (const [frequency, duration, wave, gainValue] of sounds[type] || sounds.chip) {
+    const osc = audio.ctx.createOscillator();
+    const gain = audio.ctx.createGain();
+    osc.type = wave;
+    osc.frequency.setValueAtTime(frequency, now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(30, frequency * 0.72), now + duration);
+    gain.gain.setValueAtTime(gainValue, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    osc.connect(gain);
+    gain.connect(audio.master);
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
+  }
+}
+
 function weightedPick(table) {
   const total = table.reduce((sum, item) => sum + item.weight, 0);
   let roll = Math.random() * total;
@@ -1172,6 +1277,14 @@ function pickBrickType() {
 
 function brickGlyph(type) {
   return { normal: "", hard: "硬", bomb: "爆", coin: "", item: "" }[type];
+}
+
+function getBrickMaterial(brick) {
+  if (brick.maxHp <= 1) return materialStyles.normal;
+  if (brick.hp <= 1) return materialStyles.normal;
+  if (brick.hp === 2) return materialStyles.wood;
+  if (brick.hp === 3) return materialStyles.stone;
+  return materialStyles.metal;
 }
 
 function itemColor(type) {

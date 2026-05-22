@@ -874,7 +874,7 @@ function drawBackground() {
   ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
   const t = performance.now() * 0.002;
-  ctx.globalAlpha = fever ? 0.34 : 0.22;
+  ctx.globalAlpha = fever ? 0.36 : 0.25;
   ctx.strokeStyle = fever ? "#ffe48c" : "#31404a";
   ctx.lineWidth = 1.2;
   for (let y = 60; y < GAME_HEIGHT; y += 34) {
@@ -885,11 +885,6 @@ function drawBackground() {
       else ctx.lineTo(x, waveY);
     }
     ctx.stroke();
-  }
-  ctx.globalAlpha = 0.08;
-  ctx.fillStyle = "#d7a060";
-  for (let x = -20; x < GAME_WIDTH; x += 52) {
-    ctx.fillRect(x, 56, 1, GAME_HEIGHT - 110);
   }
   ctx.globalAlpha = 1;
 }

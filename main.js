@@ -87,6 +87,8 @@ const audio = {
   enabled: false
 };
 
+let lastTouchEnd = 0;
+
 const state = {
   running: false,
   paused: false,
@@ -228,7 +230,7 @@ function bindEvents() {
   shopMultiButton.addEventListener("click", buyMulti);
   window.addEventListener("keydown", (event) => {
     unlockAudio();
-    if (event.code === "KeyP") togglePause();
+    if (event.code === "KeyP" || event.code === "Escape") togglePause();
     if (event.code === "KeyR") resetGame();
     if (event.code === "Space") {
       event.preventDefault();
@@ -236,6 +238,10 @@ function bindEvents() {
     }
   });
   window.addEventListener("contextmenu", (event) => event.preventDefault());
+  window.addEventListener("touchend", preventDoubleTapZoom, { passive: false });
+  window.addEventListener("gesturestart", (event) => event.preventDefault());
+  window.addEventListener("gesturechange", (event) => event.preventDefault());
+  window.addEventListener("gestureend", (event) => event.preventDefault());
 }
 
 function handlePointer(event) {
@@ -397,6 +403,12 @@ function generateWave() {
   state.waveKills = 0;
   state.bannerText = `WAVE ${state.wave}`;
   state.waveBanner = 1.25;
+}
+
+function preventDoubleTapZoom(event) {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 320) event.preventDefault();
+  lastTouchEnd = now;
 }
 
 function spawnBoss() {

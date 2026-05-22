@@ -24,11 +24,15 @@ body {
   color: #fff8e9;
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   touch-action: none;
+  overscroll-behavior: none;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-text-size-adjust: 100%;
 }
 
 button {
   font: inherit;
+  touch-action: manipulation;
 }
 
 #gameShell {

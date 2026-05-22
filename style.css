@@ -1,0 +1,186 @@
+:root {
+  --neon-blue: #35e9ff;
+  --neon-pink: #ff3df2;
+  --neon-green: #6dff8f;
+  --panel: rgba(8, 10, 27, 0.76);
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 8%, rgba(255, 61, 242, 0.14), transparent 30%),
+    radial-gradient(circle at 82% 16%, rgba(53, 233, 255, 0.12), transparent 34%),
+    linear-gradient(180deg, #050611 0%, #090a18 56%, #02030a 100%);
+  color: #f5fbff;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  touch-action: none;
+  user-select: none;
+}
+
+button {
+  font: inherit;
+}
+
+#gameShell {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: min(100vw, 420px, calc(100dvh * 0.583333));
+  height: min(100dvh, 720px, calc(100vw * 1.714286));
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+  background: #050611;
+  box-shadow: 0 0 36px rgba(53, 233, 255, 0.2), 0 0 80px rgba(255, 61, 242, 0.12);
+}
+
+#gameCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #050611;
+  touch-action: none;
+}
+
+.icon-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  color: #f7fbff;
+  background: rgba(9, 12, 31, 0.72);
+  box-shadow: 0 0 16px rgba(53, 233, 255, 0.22);
+  cursor: pointer;
+}
+
+#upgradePanel {
+  position: absolute;
+  left: auto;
+  right: 12px;
+  bottom: 4px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: min(300px, calc(100% - 24px));
+  pointer-events: none;
+}
+
+.upgrade-button {
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  color: #f8feff;
+  background: linear-gradient(135deg, rgba(31, 229, 255, 0.24), rgba(255, 61, 242, 0.2));
+  box-shadow: 0 0 18px rgba(53, 233, 255, 0.18);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.upgrade-button span,
+.upgrade-button strong {
+  display: block;
+  line-height: 1.1;
+}
+
+.upgrade-button span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.upgrade-button strong {
+  margin-top: 2px;
+  color: #ffe668;
+  font-size: 14px;
+}
+
+.upgrade-button:disabled {
+  color: rgba(245, 251, 255, 0.42);
+  background: rgba(18, 20, 38, 0.78);
+  box-shadow: none;
+  cursor: default;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  background: rgba(1, 2, 9, 0.64);
+  backdrop-filter: blur(4px);
+}
+
+.overlay.hidden {
+  display: none;
+}
+
+.overlay-panel {
+  width: min(330px, calc(100% - 42px));
+  padding: 26px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 0 34px rgba(53, 233, 255, 0.2), inset 0 0 32px rgba(255, 61, 242, 0.08);
+  text-align: center;
+}
+
+.overlay-panel h1 {
+  margin: 0 0 18px;
+  color: #fff;
+  font-size: 34px;
+  letter-spacing: 0;
+  text-shadow: 0 0 18px rgba(255, 61, 242, 0.75);
+}
+
+.overlay-panel button {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(53, 233, 255, 0.32), rgba(109, 255, 143, 0.22));
+  font-weight: 800;
+  cursor: pointer;
+}
+
+#gameOverStats {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 16px;
+  margin: 0 0 14px;
+  text-align: left;
+}
+
+#gameOverStats dt {
+  color: rgba(245, 251, 255, 0.72);
+  font-weight: 700;
+}
+
+#gameOverStats dd {
+  margin: 0;
+  color: #fff;
+  font-weight: 900;
+}
+
+@media (min-aspect-ratio: 7 / 10) {
+  #gameShell {
+    border-radius: 10px;
+    overflow: hidden;
+  }
+}

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#050611">
+  <title>Break Reactor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="gameShell" aria-label="Break Reactor browser game">
+    <canvas id="gameCanvas" width="420" height="720"></canvas>
+
+    <button id="pauseButton" class="icon-button" type="button" aria-label="Pause game" title="Pause">II</button>
+
+    <div id="upgradePanel" aria-label="Coin upgrades">
+      <button id="buyLaserButton" class="upgrade-button" type="button">
+        <span>BUY LASER</span>
+        <strong>20</strong>
+      </button>
+      <button id="buyShieldButton" class="upgrade-button" type="button">
+        <span>BUY SHIELD</span>
+        <strong>30</strong>
+      </button>
+    </div>
+
+    <div id="pauseOverlay" class="overlay hidden" aria-hidden="true">
+      <div class="overlay-panel">
+        <h1>PAUSED</h1>
+        <button id="resumeButton" type="button">RESUME</button>
+        <button id="restartPauseButton" type="button">RESTART</button>
+      </div>
+    </div>
+
+    <div id="gameOverOverlay" class="overlay hidden" aria-hidden="true">
+      <div class="overlay-panel">
+        <h1>GAME OVER</h1>
+        <dl id="gameOverStats"></dl>
+        <button id="restartGameButton" type="button">RESTART</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="main.js"></script>
+</body>
+</html>

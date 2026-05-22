@@ -75,10 +75,10 @@ const brickStyles = {
 };
 
 const materialStyles = {
-  normal: { name: "通常", color: "#6f8fa3", dark: "#2d4655", light: "#b9d8e2", crack: "#17242c" },
-  wood: { name: "木", color: "#9b6238", dark: "#5a321d", light: "#d7a060", crack: "#3e2212" },
-  stone: { name: "石", color: "#7d8289", dark: "#3b4047", light: "#c3c8ce", crack: "#262a31" },
-  metal: { name: "鋼", color: "#6f7686", dark: "#272c36", light: "#d6dbe7", crack: "#11151c" }
+  normal: { color: "#42bfe8", dark: "#1f6685", light: "#b7f2ff", crack: "#0b4056" },
+  wood: { color: "#9b6238", dark: "#5a321d", light: "#d7a060", crack: "#3e2212" },
+  stone: { color: "#7d8289", dark: "#3b4047", light: "#c3c8ce", crack: "#262a31" },
+  metal: { color: "#6f7686", dark: "#272c36", light: "#d6dbe7", crack: "#11151c" }
 };
 
 const audio = {
@@ -124,6 +124,7 @@ const state = {
   particles: [],
   popups: [],
   lasers: [],
+  rockets: [],
   effects: {
     wide: 0,
     laser: 0,
@@ -174,6 +175,7 @@ function resetGame() {
   state.particles.length = 0;
   state.popups.length = 0;
   state.lasers.length = 0;
+  state.rockets.length = 0;
   state.effects.wide = 0;
   state.effects.laser = 0;
   state.effects.laserCooldown = 0;
@@ -266,6 +268,7 @@ function update(dt) {
   updateItems(dt);
   updateCoins(dt);
   updateLasers(dt);
+  updateRockets(dt);
   updateParticles(dt);
   updatePopups(dt);
   checkCollisions();
@@ -349,7 +352,7 @@ function handleAllBallsLost() {
   state.lives -= 1;
   state.combo = 0;
   state.comboTimer = 0;
-  state.shake = 8;
+  state.shake = 4;
   if (state.lives <= 0) {
     gameOver();
   } else {
@@ -397,20 +400,34 @@ function generateWave() {
 }
 
 function spawnBoss() {
+  const tier = getBossTier(state.wave);
+  const bossWidth = tier === "small" ? BRICK_WIDTH * 4 + BRICK_GAP * 3 : tier === "mid" ? BRICK_WIDTH * 6 + BRICK_GAP * 5 : BRICK_WIDTH * 8 + BRICK_GAP * 7;
+  const bossHeight = tier === "small" ? BRICK_HEIGHT * 2 + BRICK_GAP : tier === "mid" ? BRICK_HEIGHT * 3 + BRICK_GAP * 2 : BRICK_HEIGHT * 4 + BRICK_GAP * 3;
+  const bossX = (GAME_WIDTH - bossWidth) / 2;
+  const targetY = tier === "small" ? 96 : 88;
+  clearBricksInRect({ x: bossX - 8, y: targetY - 8, w: bossWidth + 16, h: bossHeight + 54 });
   state.boss = {
-    x: 38,
+    x: bossX,
     y: -110,
-    targetY: 94,
-    w: 344,
-    h: 78,
-    hp: 260 + state.wave * 90,
-    maxHp: 260 + state.wave * 90,
-    summonTimer: 3.2,
+    targetY,
+    w: bossWidth,
+    h: bossHeight,
+    tier,
+    hp: tier === "small" ? 10 + state.wave : tier === "mid" ? 38 + state.wave * 4 : 92 + state.wave * 7,
+    maxHp: tier === "small" ? 10 + state.wave : tier === "mid" ? 38 + state.wave * 4 : 92 + state.wave * 7,
+    summonTimer: tier === "small" ? 999 : tier === "mid" ? 7.5 : 5.8,
+    rocketTimer: tier === "small" ? 3.2 : tier === "mid" ? 2.8 : 2.2,
     phase: 0
   };
   state.waveTarget = 99999;
   state.waveKills = 0;
-  state.shake = 12;
+  state.shake = 5;
+}
+
+function getBossTier(wave) {
+  if (wave < 10) return "small";
+  if (wave < 20) return "mid";
+  return "large";
 }
 
 function updateBoss(dt) {
@@ -418,14 +435,20 @@ function updateBoss(dt) {
   const boss = state.boss;
   boss.y = lerp(boss.y, boss.targetY, Math.min(1, dt * 2.8));
   boss.summonTimer -= dt;
+  boss.rocketTimer -= dt;
   boss.phase += dt;
+  if (boss.rocketTimer <= 0 && Math.abs(boss.y - boss.targetY) < 8) {
+    boss.rocketTimer = boss.tier === "small" ? randomRange(3.2, 4.8) : boss.tier === "mid" ? randomRange(2.8, 4.2) : randomRange(2.1, 3.2);
+    spawnRocket();
+  }
   if (boss.summonTimer <= 0) {
-    boss.summonTimer = Math.max(1.4, 4.2 - state.wave * 0.08);
+    boss.summonTimer = boss.tier === "mid" ? randomRange(7.0, 9.5) : randomRange(5.5, 7.2);
     summonBossBricks();
   }
 }
 
 function summonBossBricks() {
+  if (!state.boss || state.boss.tier === "small") return;
   const left = (GAME_WIDTH - (BRICK_COLS * BRICK_WIDTH + (BRICK_COLS - 1) * BRICK_GAP)) / 2;
   const slots = [];
   for (let row = 0; row < 4; row += 1) {
@@ -437,19 +460,18 @@ function summonBossBricks() {
 
   let spawned = 0;
   for (const slot of slots) {
-    if (spawned >= 5) break;
+    if (spawned >= (state.boss.tier === "mid" ? 2 : 4)) break;
     const x = left + slot.col * (BRICK_WIDTH + BRICK_GAP);
-    const y = 202 + slot.row * (BRICK_HEIGHT + BRICK_GAP);
-    if (!canPlaceBrick(x, y, BRICK_WIDTH, BRICK_HEIGHT)) continue;
-    const type = Math.random() < 0.35 ? pickBrickType() : "normal";
-    const maxHp = 1 + Math.floor(state.wave / 4) + (type === "hard" ? 2 : 0);
-    addBrick(x, y, type, maxHp);
+    const y = 210 + slot.row * (BRICK_HEIGHT + BRICK_GAP);
+    if (state.boss && rectsOverlap({ x, y, w: BRICK_WIDTH, h: BRICK_HEIGHT }, state.boss, 8)) continue;
+    addBrick(x, y, "normal", 1, true);
     spawned += 1;
   }
   if (spawned > 0) addPopup("召喚", GAME_WIDTH / 2, 214, "#ffb35c", 0.8);
 }
 
-function addBrick(x, y, type, maxHp) {
+function addBrick(x, y, type, maxHp, replace = false) {
+  if (replace) clearBricksInRect({ x, y, w: BRICK_WIDTH, h: BRICK_HEIGHT });
   if (!canPlaceBrick(x, y, BRICK_WIDTH, BRICK_HEIGHT)) return false;
   state.bricks.push({
     x,
@@ -462,6 +484,14 @@ function addBrick(x, y, type, maxHp) {
     pulse: randomRange(0, Math.PI * 2)
   });
   return true;
+}
+
+function clearBricksInRect(rect) {
+  for (const brick of [...state.bricks]) {
+    if (!rectsOverlap(rect, brick, 2)) continue;
+    state.bricks.splice(state.bricks.indexOf(brick), 1);
+    burst(brick.x + brick.w / 2, brick.y + brick.h / 2, "#42bfe8", 5, 1.8);
+  }
 }
 
 function canPlaceBrick(x, y, w, h) {
@@ -669,15 +699,15 @@ function damageBoss(amount, x, y) {
   if (!state.boss) return;
   state.boss.hp -= amount;
   burst(x, y, bossColor(), 8, 3);
-  state.shake = Math.max(state.shake, 4);
+  state.shake = Math.max(state.shake, 2.5);
   if (state.boss.hp <= 0) {
     const bonus = state.wave * 500;
     state.score += bonus;
     state.best = Math.max(state.best, state.score);
     addPopup(`BOSS +${bonus}`, GAME_WIDTH / 2, state.boss.y + 44, "#ffffff", 1.6);
-    burst(GAME_WIDTH / 2, state.boss.y + 42, "#ff3df2", 92, 8);
-    state.shake = 22;
-    state.hitStop = 0.12;
+    burst(GAME_WIDTH / 2, state.boss.y + 42, "#ff5f45", 58, 6);
+    state.shake = 9;
+    state.hitStop = 0.07;
     state.boss = null;
     playSfx("bossDown");
     advanceWave();
@@ -697,23 +727,73 @@ function updateEffects(dt) {
 }
 
 function fireLaser(x) {
-  const laser = { x, y: state.paddle.y - 8, life: 0.14 };
-  state.lasers.push(laser);
-  playSfx("laser");
-  for (const brick of [...state.bricks]) {
-    if (x >= brick.x && x <= brick.x + brick.w && brick.y + brick.h < state.paddle.y) {
-      damageBrick(brick, 1, x, brick.y + brick.h);
-      break;
+  let hitY = 54;
+  let hitType = null;
+  let hitTarget = null;
+  for (const brick of state.bricks) {
+    if (x < brick.x || x > brick.x + brick.w || brick.y + brick.h >= state.paddle.y) continue;
+    if (brick.y + brick.h > hitY) {
+      hitY = brick.y + brick.h;
+      hitType = "brick";
+      hitTarget = brick;
     }
   }
-  if (state.boss && x >= state.boss.x && x <= state.boss.x + state.boss.w) {
-    damageBoss(1, x, state.boss.y + state.boss.h);
+  if (state.boss && x >= state.boss.x && x <= state.boss.x + state.boss.w && state.boss.y + state.boss.h < state.paddle.y) {
+    if (state.boss.y + state.boss.h > hitY) {
+      hitY = state.boss.y + state.boss.h;
+      hitType = "boss";
+      hitTarget = state.boss;
+    }
   }
+  state.lasers.push({ x, y: state.paddle.y - 8, endY: hitY, life: 0.16, hit: !!hitTarget });
+  playSfx("laser");
+  if (hitType === "brick") damageBrick(hitTarget, 1, x, hitY);
+  if (hitType === "boss") damageBoss(1, x, hitY);
 }
 
 function updateLasers(dt) {
   for (const laser of state.lasers) laser.life -= dt;
   state.lasers = state.lasers.filter((laser) => laser.life > 0);
+}
+
+function spawnRocket() {
+  if (!state.boss) return;
+  const boss = state.boss;
+  const startX = clamp(boss.x + boss.w / 2 + randomRange(-boss.w * 0.35, boss.w * 0.35), 28, GAME_WIDTH - 28);
+  const aim = clamp((state.paddle.x - startX) * 0.012, -1.15, 1.15);
+  state.rockets.push({
+    x: startX,
+    y: boss.y + boss.h + 8,
+    vx: aim,
+    vy: boss.tier === "large" ? 2.8 : 2.35,
+    r: 7,
+    life: 8
+  });
+  addPopup("!", startX, boss.y + boss.h + 24, "#ff6b5f", 0.9);
+}
+
+function updateRockets(dt) {
+  const paddleRect = getPaddleRect();
+  for (const rocket of [...state.rockets]) {
+    rocket.x += rocket.vx * dt * 60;
+    rocket.y += rocket.vy * dt * 60;
+    rocket.life -= dt;
+    if (circleRect(rocket, paddleRect)) {
+      state.rockets.splice(state.rockets.indexOf(rocket), 1);
+      burst(rocket.x, rocket.y, "#ff6b5f", 24, 4.5);
+      playSfx("explosion");
+      state.shake = Math.max(state.shake, 5);
+      if (state.effects.shield > 0) {
+        state.effects.shield -= 1;
+        addPopup("シールド", state.paddle.x, state.paddle.y - 42, "#68d17a", 1.1);
+      } else {
+        state.lives -= 1;
+        addPopup("-1", state.paddle.x, state.paddle.y - 42, "#ff6b5f", 1.2);
+        if (state.lives <= 0) gameOver();
+      }
+    }
+  }
+  state.rockets = state.rockets.filter((rocket) => rocket.life > 0 && rocket.y < GAME_HEIGHT + 30);
 }
 
 function togglePause() {
@@ -771,6 +851,7 @@ function draw() {
   drawBricks();
   drawBoss();
   drawLasers();
+  drawRockets();
   drawPaddle();
   drawBalls();
   drawItems();
@@ -792,13 +873,17 @@ function drawBackground() {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-  ctx.globalAlpha = fever ? 0.34 : 0.18;
-  ctx.strokeStyle = fever ? "#ffe48c" : "#3b342b";
-  ctx.lineWidth = 1;
+  const t = performance.now() * 0.002;
+  ctx.globalAlpha = fever ? 0.34 : 0.22;
+  ctx.strokeStyle = fever ? "#ffe48c" : "#31404a";
+  ctx.lineWidth = 1.2;
   for (let y = 60; y < GAME_HEIGHT; y += 34) {
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(GAME_WIDTH, y + Math.sin(y * 0.05 + performance.now() * 0.002) * 8);
+    for (let x = 0; x <= GAME_WIDTH; x += 12) {
+      const waveY = y + Math.sin(x * 0.035 + y * 0.05 + t) * 7;
+      if (x === 0) ctx.moveTo(x, waveY);
+      else ctx.lineTo(x, waveY);
+    }
     ctx.stroke();
   }
   ctx.globalAlpha = 0.08;
@@ -869,9 +954,7 @@ function drawBossHp() {
 
 function drawBricks() {
   for (const brick of state.bricks) {
-    const style = brickStyles[brick.type];
     const material = getBrickMaterial(brick);
-    const hpRatio = brick.hp / brick.maxHp;
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.45)";
     ctx.shadowBlur = 8;
@@ -907,18 +990,11 @@ function drawBricks() {
       ctx.stroke();
     }
 
-    if (brick.maxHp > 1) {
-      ctx.fillStyle = "rgba(0,0,0,0.34)";
-      ctx.fillRect(brick.x + 4, brick.y + 3, brick.w - 8, 3);
-      ctx.fillStyle = hpRatio > 0.5 ? "#ffe48c" : "#ff6b5f";
-      ctx.fillRect(brick.x + 4, brick.y + 3, (brick.w - 8) * hpRatio, 3);
-    }
-
-    ctx.fillStyle = "rgba(255,248,230,0.86)";
-    ctx.font = "900 10px Segoe UI, Arial";
+    ctx.fillStyle = "rgba(255,248,230,0.72)";
+    ctx.font = "900 11px Segoe UI, Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const glyph = brick.maxHp > 1 ? material.name : brickGlyph(brick.type);
+    const glyph = brickGlyph(brick.type);
     if (glyph) ctx.fillText(glyph, brick.x + brick.w / 2, brick.y + brick.h / 2 + 1);
     ctx.restore();
   }
@@ -927,25 +1003,35 @@ function drawBricks() {
 function drawBoss() {
   if (!state.boss) return;
   const boss = state.boss;
+  const hpRatio = clamp(boss.hp / boss.maxHp, 0, 1);
   ctx.save();
   ctx.shadowColor = bossColor();
-  ctx.shadowBlur = 24;
+  ctx.shadowBlur = 16;
   const grad = ctx.createLinearGradient(boss.x, boss.y, boss.x + boss.w, boss.y + boss.h);
-  grad.addColorStop(0, bossColor());
-  grad.addColorStop(0.5, "#421653");
-  grad.addColorStop(1, "#d65d43");
+  grad.addColorStop(0, "#ff9a72");
+  grad.addColorStop(0.45, bossColor());
+  grad.addColorStop(1, "#6b1f21");
   ctx.fillStyle = grad;
-  roundRect(boss.x, boss.y, boss.w, boss.h, 12);
+  roundRect(boss.x, boss.y, boss.w, boss.h, 7);
   ctx.fill();
   ctx.shadowBlur = 0;
-  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.strokeStyle = "rgba(255,235,215,0.5)";
   ctx.lineWidth = 2;
   ctx.stroke();
-  ctx.fillStyle = "rgba(255,255,255,0.86)";
-  ctx.font = "900 22px Segoe UI, Arial";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("リアクターコア", boss.x + boss.w / 2, boss.y + boss.h / 2);
+  ctx.strokeStyle = "rgba(60, 8, 10, 0.62)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(boss.x + boss.w * 0.18, boss.y + 8);
+  ctx.lineTo(boss.x + boss.w * 0.28, boss.y + boss.h - 10);
+  if (hpRatio < 0.72) {
+    ctx.moveTo(boss.x + boss.w * 0.55, boss.y + 6);
+    ctx.lineTo(boss.x + boss.w * 0.42, boss.y + boss.h - 8);
+  }
+  if (hpRatio < 0.38) {
+    ctx.moveTo(boss.x + boss.w * 0.78, boss.y + 10);
+    ctx.lineTo(boss.x + boss.w * 0.66, boss.y + boss.h - 7);
+  }
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -1028,15 +1114,42 @@ function drawCoins() {
 function drawLasers() {
   for (const laser of state.lasers) {
     ctx.save();
-    ctx.globalAlpha = clamp(laser.life / 0.14, 0, 1);
-    ctx.strokeStyle = "#ff3df2";
-    ctx.shadowColor = "#ff3df2";
-    ctx.shadowBlur = 18;
-    ctx.lineWidth = 4;
+    ctx.globalAlpha = clamp(laser.life / 0.16, 0, 1);
+    ctx.strokeStyle = laser.hit ? "#fff4a8" : "#49c7ff";
+    ctx.shadowColor = laser.hit ? "#ffe668" : "#49c7ff";
+    ctx.shadowBlur = 16;
+    ctx.lineWidth = 5;
     ctx.beginPath();
     ctx.moveTo(laser.x, laser.y);
-    ctx.lineTo(laser.x, 54);
+    ctx.lineTo(laser.x, laser.endY);
     ctx.stroke();
+    if (laser.hit) {
+      ctx.fillStyle = "#fff4a8";
+      ctx.beginPath();
+      ctx.arc(laser.x, laser.endY, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawRockets() {
+  for (const rocket of state.rockets) {
+    ctx.save();
+    ctx.translate(rocket.x, rocket.y);
+    ctx.rotate(Math.atan2(rocket.vy, rocket.vx) - Math.PI / 2);
+    ctx.shadowColor = "#ff6b5f";
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = "#ff6b5f";
+    roundRect(-5, -10, 10, 20, 5);
+    ctx.fill();
+    ctx.fillStyle = "#ffe48c";
+    ctx.beginPath();
+    ctx.moveTo(-4, 10);
+    ctx.lineTo(0, 18 + Math.sin(performance.now() * 0.02) * 3);
+    ctx.lineTo(4, 10);
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
   }
 }
@@ -1276,7 +1389,7 @@ function pickBrickType() {
 }
 
 function brickGlyph(type) {
-  return { normal: "", hard: "硬", bomb: "爆", coin: "", item: "" }[type];
+  return { normal: "", hard: "", bomb: "", coin: "", item: "" }[type];
 }
 
 function getBrickMaterial(brick) {
@@ -1304,9 +1417,9 @@ function itemName(type) {
 }
 
 function bossColor() {
-  if (!state.boss) return "#ff3df2";
+  if (!state.boss) return "#d9413f";
   const hp = state.boss.hp / state.boss.maxHp;
-  return hp < 0.35 ? "#ff394b" : hp < 0.68 ? "#ff8b39" : "#ff3df2";
+  return hp < 0.35 ? "#8f1f23" : hp < 0.68 ? "#c93332" : "#d9413f";
 }
 
 function shadeColor(hex, percent) {

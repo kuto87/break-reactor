@@ -873,14 +873,18 @@ function drawBackground() {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-  const t = performance.now() * 0.002;
-  ctx.globalAlpha = fever ? 0.36 : 0.25;
+  const t = performance.now() * 0.00042;
+  ctx.globalAlpha = fever ? 0.34 : 0.22;
   ctx.strokeStyle = fever ? "#ffe48c" : "#31404a";
-  ctx.lineWidth = 1.2;
+  ctx.lineWidth = 1.1;
   for (let y = 60; y < GAME_HEIGHT; y += 34) {
     ctx.beginPath();
-    for (let x = 0; x <= GAME_WIDTH; x += 12) {
-      const waveY = y + Math.sin(x * 0.035 + y * 0.05 + t) * 7;
+    const rowDrift = Math.sin(y * 0.037 + t * 0.7) * 2.2;
+    const rowPhase = Math.sin(y * 0.011) * 3.4;
+    for (let x = 0; x <= GAME_WIDTH; x += 10) {
+      const soft = Math.sin(x * 0.024 + y * 0.033 + t + rowPhase) * 5.3;
+      const lazy = Math.sin(x * 0.011 - y * 0.019 + t * 0.37) * 2.8;
+      const waveY = y + rowDrift + soft + lazy;
       if (x === 0) ctx.moveTo(x, waveY);
       else ctx.lineTo(x, waveY);
     }

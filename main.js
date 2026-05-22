@@ -10,19 +10,21 @@ const PADDLE_Y = 660;
 const BALL_RADIUS = 7;
 const INITIAL_BALL_SPEED = 5.5;
 const MAX_BALLS = 30;
-const BRICK_COLS = 8;
-const BRICK_WIDTH = 44;
-const BRICK_HEIGHT = 24;
-const BRICK_GAP = 6;
+const BRICK_COLS = 10;
+const BRICK_WIDTH = 36;
+const BRICK_HEIGHT = 20;
+const BRICK_GAP = 5;
 const BRICK_START_Y = 90;
 const COMBO_TIME = 2;
-const ITEM_DROP_RATE = 0.08;
-const COIN_DROP_RATE = 0.18;
+const ITEM_DROP_RATE = 0.045;
+const COIN_DROP_RATE = 0.15;
 const COIN_VALUE = 1;
 const ITEM_FALL_SPEED = 2.5;
 const COIN_FALL_SPEED = 2.8;
 const LASER_COST = 20;
 const SHIELD_COST = 30;
+const WIDE_COST = 18;
+const MULTI_COST = 24;
 const STORAGE_KEY = "breakReactorBestScore";
 
 const canvas = document.getElementById("gameCanvas");
@@ -30,12 +32,20 @@ const ctx = canvas.getContext("2d");
 const pauseButton = document.getElementById("pauseButton");
 const buyLaserButton = document.getElementById("buyLaserButton");
 const buyShieldButton = document.getElementById("buyShieldButton");
+const shopButton = document.getElementById("shopButton");
 const pauseOverlay = document.getElementById("pauseOverlay");
 const gameOverOverlay = document.getElementById("gameOverOverlay");
+const shopOverlay = document.getElementById("shopOverlay");
 const gameOverStats = document.getElementById("gameOverStats");
 const resumeButton = document.getElementById("resumeButton");
 const restartPauseButton = document.getElementById("restartPauseButton");
 const restartGameButton = document.getElementById("restartGameButton");
+const closeShopButton = document.getElementById("closeShopButton");
+const shopCoinText = document.getElementById("shopCoinText");
+const shopLaserButton = document.getElementById("shopLaserButton");
+const shopShieldButton = document.getElementById("shopShieldButton");
+const shopWideButton = document.getElementById("shopWideButton");
+const shopMultiButton = document.getElementById("shopMultiButton");
 
 const permanentUpgrades = {
   lifeBonus: 0,
@@ -56,16 +66,17 @@ const itemTable = [
 ];
 
 const brickStyles = {
-  normal: { color: "#35e9ff", score: 1 },
-  hard: { color: "#a66cff", score: 1.4 },
-  bomb: { color: "#ff5f45", score: 1.2 },
-  coin: { color: "#ffe668", score: 1.1 },
-  item: { color: "#6dff8f", score: 1.1 }
+  normal: { color: "#9b6238", dark: "#5a321d", light: "#d7a060", score: 1 },
+  hard: { color: "#8d8f96", dark: "#45484f", light: "#c9cbd0", score: 1.4 },
+  bomb: { color: "#b65a42", dark: "#612b23", light: "#ff9a72", score: 1.2 },
+  coin: { color: "#ad7836", dark: "#5b3b19", light: "#e5b665", score: 1.1 },
+  item: { color: "#7e7049", dark: "#403725", light: "#c8b77b", score: 1.1 }
 };
 
 const state = {
   running: false,
   paused: false,
+  shopOpen: false,
   gameEnded: false,
   score: 0,
   best: Number(localStorage.getItem(STORAGE_KEY) || 0),
@@ -120,6 +131,7 @@ function init() {
 function resetGame() {
   state.running = true;
   state.paused = false;
+  state.shopOpen = false;
   state.gameEnded = false;
   state.score = 0;
   state.best = Number(localStorage.getItem(STORAGE_KEY) || 0);
@@ -160,6 +172,7 @@ function resetGame() {
   generateWave();
   setOverlay(pauseOverlay, false);
   setOverlay(gameOverOverlay, false);
+  setOverlay(shopOverlay, false);
   updateButtons();
 }
 
@@ -175,6 +188,12 @@ function bindEvents() {
   restartGameButton.addEventListener("click", resetGame);
   buyLaserButton.addEventListener("click", buyLaser);
   buyShieldButton.addEventListener("click", buyShield);
+  shopButton.addEventListener("click", openShop);
+  closeShopButton.addEventListener("click", closeShop);
+  shopLaserButton.addEventListener("click", buyLaser);
+  shopShieldButton.addEventListener("click", buyShield);
+  shopWideButton.addEventListener("click", buyWide);
+  shopMultiButton.addEventListener("click", buyMulti);
   window.addEventListener("keydown", (event) => {
     if (event.code === "KeyP") togglePause();
     if (event.code === "KeyR") resetGame();
@@ -288,8 +307,8 @@ function updateBalls(dt) {
 function handleAllBallsLost() {
   if (state.effects.shield > 0) {
     state.effects.shield -= 1;
-    addPopup("SHIELD", state.paddle.x, state.paddle.y - 42, "#6dff8f", 1.2);
-    burst(state.paddle.x, state.paddle.y, "#6dff8f", 26, 4.5);
+    addPopup("シールド", state.paddle.x, state.paddle.y - 42, "#68d17a", 1.2);
+    burst(state.paddle.x, state.paddle.y, "#68d17a", 26, 4.5);
     spawnBall(false);
     return;
   }
@@ -315,38 +334,30 @@ function updatePaddle(dt) {
 function generateWave() {
   const isBossWave = state.wave % 5 === 0;
   if (isBossWave) {
-    state.bannerText = "WARNING";
+    state.bannerText = "警告";
     state.warningTimer = 2.4;
     spawnBoss();
     return;
   }
 
-  const rows = clamp(2 + Math.floor(state.wave / 2), 2, 6);
-  const hpBase = 1 + Math.floor((state.wave - 1) / 3);
-  const specialRate = clamp(0.08 + state.wave * 0.018, 0.08, 0.34);
-  const countChance = clamp(0.64 + state.wave * 0.025, 0.64, 0.92);
+  const rows = clamp(3 + Math.floor(state.wave / 2), 3, 7);
+  const hpBase = 1 + Math.floor(Math.max(0, state.wave - 2) / 3);
+  const specialRate = clamp(0.06 + state.wave * 0.014, 0.06, 0.28);
+  const countChance = clamp(0.7 + state.wave * 0.022, 0.7, 0.94);
   const left = (GAME_WIDTH - (BRICK_COLS * BRICK_WIDTH + (BRICK_COLS - 1) * BRICK_GAP)) / 2;
 
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < BRICK_COLS; col += 1) {
       if (Math.random() > countChance) continue;
-      const type = Math.random() < specialRate ? pickBrickType() : "normal";
+      const type = state.wave <= 2 ? "normal" : Math.random() < specialRate ? pickBrickType() : "normal";
       const hpBonus = type === "hard" ? 2 : type === "normal" ? 0 : 1;
-      const maxHp = Math.max(1, hpBase + hpBonus + (Math.random() < 0.2 ? 1 : 0));
-      state.bricks.push({
-        x: left + col * (BRICK_WIDTH + BRICK_GAP),
-        y: BRICK_START_Y + row * (BRICK_HEIGHT + BRICK_GAP),
-        w: BRICK_WIDTH,
-        h: BRICK_HEIGHT,
-        type,
-        hp: maxHp,
-        maxHp,
-        pulse: randomRange(0, Math.PI * 2)
-      });
+      const earlyEasy = state.wave <= 2 && type !== "hard";
+      const maxHp = earlyEasy ? 1 : Math.max(1, hpBase + hpBonus + (Math.random() < 0.18 ? 1 : 0));
+      addBrick(left + col * (BRICK_WIDTH + BRICK_GAP), BRICK_START_Y + row * (BRICK_HEIGHT + BRICK_GAP), type, maxHp);
     }
   }
 
-  state.waveTarget = Math.max(8, Math.floor(state.bricks.length * 0.72));
+  state.waveTarget = Math.max(14, Math.floor(state.bricks.length * 0.66));
   state.waveKills = 0;
   state.bannerText = `WAVE ${state.wave}`;
   state.waveBanner = 1.25;
@@ -383,23 +394,47 @@ function updateBoss(dt) {
 
 function summonBossBricks() {
   const left = (GAME_WIDTH - (BRICK_COLS * BRICK_WIDTH + (BRICK_COLS - 1) * BRICK_GAP)) / 2;
-  const row = Math.random() < 0.5 ? 0 : 1;
-  for (let i = 0; i < 4; i += 1) {
-    const col = Math.floor(Math.random() * BRICK_COLS);
+  const slots = [];
+  for (let row = 0; row < 4; row += 1) {
+    for (let col = 0; col < BRICK_COLS; col += 1) {
+      slots.push({ row, col, sort: Math.random() });
+    }
+  }
+  slots.sort((a, b) => a.sort - b.sort);
+
+  let spawned = 0;
+  for (const slot of slots) {
+    if (spawned >= 5) break;
+    const x = left + slot.col * (BRICK_WIDTH + BRICK_GAP);
+    const y = 202 + slot.row * (BRICK_HEIGHT + BRICK_GAP);
+    if (!canPlaceBrick(x, y, BRICK_WIDTH, BRICK_HEIGHT)) continue;
     const type = Math.random() < 0.35 ? pickBrickType() : "normal";
     const maxHp = 1 + Math.floor(state.wave / 4) + (type === "hard" ? 2 : 0);
-    state.bricks.push({
-      x: left + col * (BRICK_WIDTH + BRICK_GAP),
-      y: 202 + row * (BRICK_HEIGHT + BRICK_GAP) + randomRange(-3, 3),
-      w: BRICK_WIDTH,
-      h: BRICK_HEIGHT,
-      type,
-      hp: maxHp,
-      maxHp,
-      pulse: randomRange(0, Math.PI * 2)
-    });
+    addBrick(x, y, type, maxHp);
+    spawned += 1;
   }
-  addPopup("SUMMON", GAME_WIDTH / 2, 214, "#ff5fbd", 0.8);
+  if (spawned > 0) addPopup("召喚", GAME_WIDTH / 2, 214, "#ffb35c", 0.8);
+}
+
+function addBrick(x, y, type, maxHp) {
+  if (!canPlaceBrick(x, y, BRICK_WIDTH, BRICK_HEIGHT)) return false;
+  state.bricks.push({
+    x,
+    y,
+    w: BRICK_WIDTH,
+    h: BRICK_HEIGHT,
+    type,
+    hp: maxHp,
+    maxHp,
+    pulse: randomRange(0, Math.PI * 2)
+  });
+  return true;
+}
+
+function canPlaceBrick(x, y, w, h) {
+  const rect = { x, y, w, h };
+  if (state.boss && rectsOverlap(rect, state.boss, 6)) return false;
+  return !state.bricks.some((brick) => rectsOverlap(rect, brick, 1));
 }
 
 function damageBrick(brick, amount = 1, sourceX = brick.x + brick.w / 2, sourceY = brick.y + brick.h / 2) {
@@ -471,23 +506,38 @@ function applyItem(type) {
   if (type === "bomb") state.effects.bomb += 8;
   if (type === "shield") state.effects.shield = Math.min(3, state.effects.shield + 1);
   if (type === "slow") state.effects.slow += 8;
-  addPopup(type.toUpperCase(), state.paddle.x, state.paddle.y - 46, itemColor(type), 1.1);
+  addPopup(itemName(type), state.paddle.x, state.paddle.y - 46, itemColor(type), 1.1);
   burst(state.paddle.x, state.paddle.y - 10, itemColor(type), 24, 4);
 }
 
 function buyLaser() {
-  if (!canUseUpgrades() || state.coins < LASER_COST) return;
+  if (!canBuy() || state.coins < LASER_COST) return;
   state.coins -= LASER_COST;
   state.effects.laser += 5;
-  addPopup("LASER", state.paddle.x, state.paddle.y - 52, "#ff3df2", 1);
+  addPopup("レーザー", state.paddle.x, state.paddle.y - 52, "#49c7ff", 1);
   updateButtons();
 }
 
 function buyShield() {
-  if (!canUseUpgrades() || state.coins < SHIELD_COST || state.effects.shield >= 3) return;
+  if (!canBuy() || state.coins < SHIELD_COST || state.effects.shield >= 3) return;
   state.coins -= SHIELD_COST;
   state.effects.shield += 1;
-  addPopup("SHIELD", state.paddle.x, state.paddle.y - 52, "#6dff8f", 1);
+  addPopup("シールド", state.paddle.x, state.paddle.y - 52, "#68d17a", 1);
+  updateButtons();
+}
+
+function buyWide() {
+  if (!canBuy() || state.coins < WIDE_COST) return;
+  state.coins -= WIDE_COST;
+  state.effects.wide += 10;
+  addPopup("ワイド", state.paddle.x, state.paddle.y - 52, "#49c7ff", 1);
+  updateButtons();
+}
+
+function buyMulti() {
+  if (!canBuy() || state.coins < MULTI_COST) return;
+  state.coins -= MULTI_COST;
+  applyItem("multi");
   updateButtons();
 }
 
@@ -624,8 +674,29 @@ function updateLasers(dt) {
 
 function togglePause() {
   if (state.gameEnded) return;
+  if (state.shopOpen) {
+    closeShop();
+    return;
+  }
   state.paused = !state.paused;
   setOverlay(pauseOverlay, state.paused);
+  updateButtons();
+}
+
+function openShop() {
+  if (state.gameEnded) return;
+  state.shopOpen = true;
+  state.paused = true;
+  setOverlay(pauseOverlay, false);
+  setOverlay(shopOverlay, true);
+  updateButtons();
+}
+
+function closeShop() {
+  if (!state.shopOpen) return;
+  state.shopOpen = false;
+  state.paused = false;
+  setOverlay(shopOverlay, false);
   updateButtons();
 }
 
@@ -637,10 +708,10 @@ function gameOver() {
   }
   state.best = Number(localStorage.getItem(STORAGE_KEY) || state.best);
   gameOverStats.innerHTML = `
-    <dt>SCORE</dt><dd>${state.score}</dd>
-    <dt>BEST</dt><dd>${state.best}</dd>
-    <dt>REACHED WAVE</dt><dd>${state.wave}</dd>
-    <dt>COIN</dt><dd>${state.coins}</dd>
+    <dt>スコア</dt><dd>${state.score}</dd>
+    <dt>ベスト</dt><dd>${state.best}</dd>
+    <dt>到達WAVE</dt><dd>${state.wave}</dd>
+    <dt>コイン</dt><dd>${state.coins}</dd>
   `;
   setOverlay(gameOverOverlay, true);
   updateButtons();
@@ -670,14 +741,14 @@ function drawBackground() {
   const bossTint = state.boss || state.warningTimer > 0;
   const fever = state.feverTimer > 0;
   const gradient = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-  gradient.addColorStop(0, bossTint ? "#19081d" : fever ? "#10102f" : "#050611");
-  gradient.addColorStop(0.55, fever ? "#17143d" : "#080b1e");
-  gradient.addColorStop(1, "#02030a");
+  gradient.addColorStop(0, bossTint ? "#231018" : fever ? "#18202b" : "#101318");
+  gradient.addColorStop(0.55, fever ? "#1f2430" : "#141018");
+  gradient.addColorStop(1, "#08090c");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-  ctx.globalAlpha = fever ? 0.42 : 0.24;
-  ctx.strokeStyle = fever ? "#ff3df2" : "#163e59";
+  ctx.globalAlpha = fever ? 0.34 : 0.18;
+  ctx.strokeStyle = fever ? "#ffe48c" : "#31404a";
   ctx.lineWidth = 1;
   for (let y = 60; y < GAME_HEIGHT; y += 34) {
     ctx.beginPath();
@@ -690,12 +761,12 @@ function drawBackground() {
 
 function drawHud() {
   const entries = [
-    ["SCORE", state.score],
-    ["BEST", state.best],
+    ["スコア", state.score],
+    ["ベスト", state.best],
     ["WAVE", state.wave],
-    ["LIFE", state.lives],
-    ["COIN", state.coins],
-    ["COMBO", state.combo]
+    ["ライフ", state.lives],
+    ["コイン", state.coins],
+    ["コンボ", state.combo]
   ];
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
@@ -717,11 +788,11 @@ function drawHud() {
 
 function drawEffectTimers() {
   const active = [];
-  if (state.effects.wide > 0) active.push(["WIDE", state.effects.wide, "#35e9ff"]);
-  if (state.effects.laser > 0) active.push(["LASER", state.effects.laser, "#ff3df2"]);
-  if (state.effects.pierce > 0) active.push(["PIERCE", state.effects.pierce, "#ffffff"]);
-  if (state.effects.bomb > 0) active.push(["BOMB", state.effects.bomb, "#ff8b39"]);
-  if (state.effects.slow > 0) active.push(["SLOW", state.effects.slow, "#9fffc9"]);
+  if (state.effects.wide > 0) active.push(["ワイド", state.effects.wide, "#49c7ff"]);
+  if (state.effects.laser > 0) active.push(["レーザー", state.effects.laser, "#49c7ff"]);
+  if (state.effects.pierce > 0) active.push(["貫通", state.effects.pierce, "#ffffff"]);
+  if (state.effects.bomb > 0) active.push(["爆弾", state.effects.bomb, "#ff9a72"]);
+  if (state.effects.slow > 0) active.push(["スロー", state.effects.slow, "#9fffc9"]);
   active.forEach(([label, value, color], index) => {
     const y = 58 + index * 15;
     ctx.fillStyle = color;
@@ -731,7 +802,7 @@ function drawEffectTimers() {
   if (state.effects.shield > 0) {
     ctx.fillStyle = "#6dff8f";
     ctx.font = "900 12px Segoe UI, Arial";
-    ctx.fillText(`SHIELD x${state.effects.shield}`, 308, 58);
+    ctx.fillText(`シールド x${state.effects.shield}`, 300, 58);
   }
 }
 
@@ -751,19 +822,51 @@ function drawBricks() {
     const style = brickStyles[brick.type];
     const hpRatio = brick.hp / brick.maxHp;
     ctx.save();
-    ctx.shadowColor = style.color;
-    ctx.shadowBlur = 10;
-    ctx.fillStyle = shadeColor(style.color, -20 + hpRatio * 18);
+    ctx.shadowColor = "rgba(0,0,0,0.45)";
+    ctx.shadowBlur = 8;
+    const grad = ctx.createLinearGradient(brick.x, brick.y, brick.x, brick.y + brick.h);
+    grad.addColorStop(0, style.light);
+    grad.addColorStop(0.45, style.color);
+    grad.addColorStop(1, style.dark);
+    ctx.fillStyle = grad;
     roundRect(brick.x, brick.y, brick.w, brick.h, 5);
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "rgba(255,255,255,0.22)";
-    ctx.fillRect(brick.x + 5, brick.y + 5, (brick.w - 10) * hpRatio, 3);
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.strokeStyle = "rgba(255,248,220,0.28)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(62,34,18,0.38)";
+    ctx.beginPath();
+    ctx.moveTo(brick.x + 6, brick.y + 6);
+    ctx.lineTo(brick.x + brick.w - 7, brick.y + 4 + Math.sin(brick.pulse) * 1.5);
+    ctx.moveTo(brick.x + 7, brick.y + brick.h - 6);
+    ctx.lineTo(brick.x + brick.w - 6, brick.y + brick.h - 7);
+    ctx.stroke();
+
+    if (brick.hp < brick.maxHp) {
+      ctx.strokeStyle = "rgba(20,12,8,0.58)";
+      ctx.beginPath();
+      ctx.moveTo(brick.x + brick.w * 0.26, brick.y + 4);
+      ctx.lineTo(brick.x + brick.w * 0.42, brick.y + brick.h - 5);
+      ctx.moveTo(brick.x + brick.w * 0.62, brick.y + 5);
+      ctx.lineTo(brick.x + brick.w * 0.76, brick.y + brick.h - 4);
+      ctx.stroke();
+    }
+
+    if (brick.maxHp > 1) {
+      ctx.fillStyle = "rgba(0,0,0,0.34)";
+      ctx.fillRect(brick.x + 4, brick.y + 3, brick.w - 8, 3);
+      ctx.fillStyle = hpRatio > 0.5 ? "#ffe48c" : "#ff6b5f";
+      ctx.fillRect(brick.x + 4, brick.y + 3, (brick.w - 8) * hpRatio, 3);
+    }
+
+    ctx.fillStyle = "rgba(255,248,230,0.86)";
     ctx.font = "900 10px Segoe UI, Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(brickGlyph(brick.type), brick.x + brick.w / 2, brick.y + brick.h / 2 + 1);
+    const glyph = brick.maxHp > 1 ? String(brick.hp) : brickGlyph(brick.type);
+    if (glyph) ctx.fillText(glyph, brick.x + brick.w / 2, brick.y + brick.h / 2 + 1);
     ctx.restore();
   }
 }
@@ -777,7 +880,7 @@ function drawBoss() {
   const grad = ctx.createLinearGradient(boss.x, boss.y, boss.x + boss.w, boss.y + boss.h);
   grad.addColorStop(0, bossColor());
   grad.addColorStop(0.5, "#421653");
-  grad.addColorStop(1, "#ff5f45");
+  grad.addColorStop(1, "#d65d43");
   ctx.fillStyle = grad;
   roundRect(boss.x, boss.y, boss.w, boss.h, 12);
   ctx.fill();
@@ -789,7 +892,7 @@ function drawBoss() {
   ctx.font = "900 22px Segoe UI, Arial";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("REACTOR CORE", boss.x + boss.w / 2, boss.y + boss.h / 2);
+  ctx.fillText("リアクターコア", boss.x + boss.w / 2, boss.y + boss.h / 2);
   ctx.restore();
 }
 
@@ -918,14 +1021,14 @@ function drawPopups() {
 
 function drawBanners() {
   if (state.waveBanner > 0 || state.warningTimer > 0) {
-    const text = state.warningTimer > 0 ? "WARNING\nBOSS INCOMING" : state.bannerText;
+    const text = state.warningTimer > 0 ? "警告\nボス接近" : state.bannerText;
     ctx.save();
     ctx.globalAlpha = Math.max(state.waveBanner, Math.min(1, state.warningTimer));
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = state.warningTimer > 0 ? "#ff496f" : "#ffffff";
-    ctx.shadowColor = state.warningTimer > 0 ? "#ff214d" : "#35e9ff";
-    ctx.shadowBlur = 24;
+    ctx.fillStyle = state.warningTimer > 0 ? "#ff6b5f" : "#fff8e9";
+    ctx.shadowColor = state.warningTimer > 0 ? "#ff3c36" : "#49c7ff";
+    ctx.shadowBlur = 18;
     ctx.font = "900 34px Segoe UI, Arial";
     const lines = text.split("\n");
     lines.forEach((line, i) => ctx.fillText(line, GAME_WIDTH / 2, 288 + i * 38));
@@ -1012,16 +1115,36 @@ function circleRect(circle, rect) {
   return dx * dx + dy * dy <= circle.r * circle.r;
 }
 
+function rectsOverlap(a, b, padding = 0) {
+  return (
+    a.x < b.x + b.w + padding &&
+    a.x + a.w + padding > b.x &&
+    a.y < b.y + b.h + padding &&
+    a.y + a.h + padding > b.y
+  );
+}
+
 function updateButtons() {
-  const usable = canUseUpgrades();
-  buyLaserButton.disabled = !usable || state.coins < LASER_COST;
-  buyShieldButton.disabled = !usable || state.coins < SHIELD_COST || state.effects.shield >= 3;
+  const quickUsable = canUseUpgrades();
+  const shopUsable = canBuy();
+  buyLaserButton.disabled = !quickUsable || state.coins < LASER_COST;
+  buyShieldButton.disabled = !quickUsable || state.coins < SHIELD_COST || state.effects.shield >= 3;
+  shopButton.disabled = state.gameEnded;
+  shopLaserButton.disabled = !shopUsable || state.coins < LASER_COST;
+  shopShieldButton.disabled = !shopUsable || state.coins < SHIELD_COST || state.effects.shield >= 3;
+  shopWideButton.disabled = !shopUsable || state.coins < WIDE_COST;
+  shopMultiButton.disabled = !shopUsable || state.coins < MULTI_COST || state.balls.length >= MAX_BALLS;
+  shopCoinText.textContent = `所持コイン ${state.coins}`;
   pauseButton.disabled = state.gameEnded;
-  pauseButton.textContent = state.paused ? "▶" : "II";
+  pauseButton.textContent = state.paused ? "▶" : "⏸";
 }
 
 function canUseUpgrades() {
-  return state.running && !state.paused && !state.gameEnded;
+  return state.running && !state.paused && !state.shopOpen && !state.gameEnded;
+}
+
+function canBuy() {
+  return state.running && !state.gameEnded && (!state.paused || state.shopOpen);
 }
 
 function setOverlay(element, visible) {
@@ -1048,11 +1171,23 @@ function pickBrickType() {
 }
 
 function brickGlyph(type) {
-  return { normal: "", hard: "H", bomb: "B", coin: "$", item: "*" }[type];
+  return { normal: "", hard: "硬", bomb: "爆", coin: "", item: "" }[type];
 }
 
 function itemColor(type) {
   return itemTable.find((item) => item.type === type)?.color || "#ffffff";
+}
+
+function itemName(type) {
+  return {
+    multi: "マルチ",
+    wide: "ワイド",
+    laser: "レーザー",
+    pierce: "貫通",
+    bomb: "爆弾",
+    shield: "シールド",
+    slow: "スロー"
+  }[type] || type;
 }
 
 function bossColor() {

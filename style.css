@@ -1,8 +1,8 @@
 :root {
-  --neon-blue: #35e9ff;
-  --neon-pink: #ff3df2;
-  --neon-green: #6dff8f;
-  --panel: rgba(8, 10, 27, 0.76);
+  --accent-blue: #49c7ff;
+  --accent-red: #ff5d73;
+  --accent-green: #68d17a;
+  --panel: rgba(18, 15, 20, 0.86);
 }
 
 * {
@@ -18,10 +18,10 @@ body {
   padding: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 18% 8%, rgba(255, 61, 242, 0.14), transparent 30%),
-    radial-gradient(circle at 82% 16%, rgba(53, 233, 255, 0.12), transparent 34%),
-    linear-gradient(180deg, #050611 0%, #090a18 56%, #02030a 100%);
-  color: #f5fbff;
+    radial-gradient(circle at 20% 5%, rgba(120, 92, 56, 0.18), transparent 32%),
+    radial-gradient(circle at 82% 14%, rgba(54, 118, 145, 0.15), transparent 34%),
+    linear-gradient(180deg, #0d1014 0%, #141016 55%, #08090c 100%);
+  color: #fff8e9;
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   touch-action: none;
   user-select: none;
@@ -40,7 +40,7 @@ button {
   transform: translate(-50%, -50%);
   transform-origin: center;
   background: #050611;
-  box-shadow: 0 0 36px rgba(53, 233, 255, 0.2), 0 0 80px rgba(255, 61, 242, 0.12);
+  box-shadow: 0 0 28px rgba(73, 199, 255, 0.18), 0 18px 80px rgba(0, 0, 0, 0.42);
 }
 
 #gameCanvas {
@@ -61,8 +61,8 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 8px;
   color: #f7fbff;
-  background: rgba(9, 12, 31, 0.72);
-  box-shadow: 0 0 16px rgba(53, 233, 255, 0.22);
+  background: rgba(26, 22, 26, 0.82);
+  box-shadow: 0 0 12px rgba(73, 199, 255, 0.18);
   cursor: pointer;
 }
 
@@ -73,9 +73,9 @@ button {
   bottom: 4px;
   z-index: 4;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  width: min(300px, calc(100% - 24px));
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  width: min(396px, calc(100% - 24px));
   pointer-events: none;
 }
 
@@ -84,8 +84,8 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 8px;
   color: #f8feff;
-  background: linear-gradient(135deg, rgba(31, 229, 255, 0.24), rgba(255, 61, 242, 0.2));
-  box-shadow: 0 0 18px rgba(53, 233, 255, 0.18);
+  background: linear-gradient(135deg, rgba(73, 199, 255, 0.22), rgba(113, 73, 45, 0.28));
+  box-shadow: 0 0 12px rgba(73, 199, 255, 0.14);
   cursor: pointer;
   pointer-events: auto;
 }
@@ -94,6 +94,11 @@ button {
 .upgrade-button strong {
   display: block;
   line-height: 1.1;
+}
+
+.shop-open-button strong {
+  color: #9fe3ff;
+  font-size: 11px;
 }
 
 .upgrade-button span {
@@ -121,7 +126,7 @@ button {
   z-index: 8;
   display: grid;
   place-items: center;
-  background: rgba(1, 2, 9, 0.64);
+  background: rgba(4, 4, 7, 0.68);
   backdrop-filter: blur(4px);
 }
 
@@ -135,7 +140,7 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.26);
   border-radius: 8px;
   background: var(--panel);
-  box-shadow: 0 0 34px rgba(53, 233, 255, 0.2), inset 0 0 32px rgba(255, 61, 242, 0.08);
+  box-shadow: 0 0 26px rgba(73, 199, 255, 0.16), inset 0 0 32px rgba(255, 210, 137, 0.06);
   text-align: center;
 }
 
@@ -144,7 +149,7 @@ button {
   color: #fff;
   font-size: 34px;
   letter-spacing: 0;
-  text-shadow: 0 0 18px rgba(255, 61, 242, 0.75);
+  text-shadow: 0 0 14px rgba(73, 199, 255, 0.55);
 }
 
 .overlay-panel button {
@@ -154,9 +159,53 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 8px;
   color: #fff;
-  background: linear-gradient(135deg, rgba(53, 233, 255, 0.32), rgba(109, 255, 143, 0.22));
+  background: linear-gradient(135deg, rgba(73, 199, 255, 0.28), rgba(104, 209, 122, 0.18));
   font-weight: 800;
   cursor: pointer;
+}
+
+.shop-panel {
+  width: min(370px, calc(100% - 34px));
+}
+
+#shopCoinText {
+  margin: -6px 0 14px;
+  color: #ffe48c;
+  font-weight: 900;
+}
+
+.shop-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.shop-grid button {
+  min-height: 62px;
+  margin: 0;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.shop-grid button span,
+.shop-grid button strong {
+  display: block;
+}
+
+.shop-grid button span {
+  font-size: 13px;
+}
+
+.shop-grid button strong {
+  margin-top: 4px;
+  color: #ffe48c;
+  font-size: 18px;
+}
+
+.shop-grid button:disabled {
+  color: rgba(255, 248, 233, 0.42);
+  background: rgba(24, 24, 28, 0.72);
+  cursor: default;
 }
 
 #gameOverStats {

@@ -11,32 +11,50 @@
   <main id="gameShell" aria-label="Break Reactor browser game">
     <canvas id="gameCanvas" width="420" height="720"></canvas>
 
-    <button id="pauseButton" class="icon-button" type="button" aria-label="Pause game" title="Pause">II</button>
+    <button id="pauseButton" class="icon-button" type="button" aria-label="一時停止" title="一時停止">⏸</button>
 
     <div id="upgradePanel" aria-label="Coin upgrades">
       <button id="buyLaserButton" class="upgrade-button" type="button">
-        <span>BUY LASER</span>
+        <span>⚡ レーザー</span>
         <strong>20</strong>
       </button>
       <button id="buyShieldButton" class="upgrade-button" type="button">
-        <span>BUY SHIELD</span>
+        <span>🛡 シールド</span>
         <strong>30</strong>
+      </button>
+      <button id="shopButton" class="upgrade-button shop-open-button" type="button">
+        <span>🛒 ショップ</span>
+        <strong>COIN</strong>
       </button>
     </div>
 
     <div id="pauseOverlay" class="overlay hidden" aria-hidden="true">
       <div class="overlay-panel">
-        <h1>PAUSED</h1>
-        <button id="resumeButton" type="button">RESUME</button>
-        <button id="restartPauseButton" type="button">RESTART</button>
+        <h1>一時停止</h1>
+        <button id="resumeButton" type="button">▶ 再開</button>
+        <button id="restartPauseButton" type="button">↻ リスタート</button>
       </div>
     </div>
 
     <div id="gameOverOverlay" class="overlay hidden" aria-hidden="true">
       <div class="overlay-panel">
-        <h1>GAME OVER</h1>
+        <h1>ゲームオーバー</h1>
         <dl id="gameOverStats"></dl>
-        <button id="restartGameButton" type="button">RESTART</button>
+        <button id="restartGameButton" type="button">↻ もう一度</button>
+      </div>
+    </div>
+
+    <div id="shopOverlay" class="overlay hidden" aria-hidden="true">
+      <div class="overlay-panel shop-panel">
+        <h1>コインショップ</h1>
+        <p id="shopCoinText">所持コイン 0</p>
+        <div class="shop-grid">
+          <button id="shopLaserButton" type="button"><span>⚡ レーザー 5秒</span><strong>20</strong></button>
+          <button id="shopShieldButton" type="button"><span>🛡 シールド +1</span><strong>30</strong></button>
+          <button id="shopWideButton" type="button"><span>↔ ワイド 10秒</span><strong>18</strong></button>
+          <button id="shopMultiButton" type="button"><span>● マルチ +2</span><strong>24</strong></button>
+        </div>
+        <button id="closeShopButton" type="button">閉じる</button>
       </div>
     </div>
   </main>

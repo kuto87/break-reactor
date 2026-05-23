@@ -1,79 +1,59 @@
 # Break Reactor
 
-Break Reactorは、ブロック崩しをベースにしたエンドレス進行のブラウザゲームです。パドルでボールを跳ね返してブロックを破壊し、コインと一時アイテムを集めながらウェーブを進めます。5ウェーブごとに高HPのボスが出現し、通常プレイから止まらずにボス戦へ移行します。
+Break Reactor is a compact endless brick-breaker for the browser. It runs as static files: no build step, no dependencies, and it can be hosted directly on GitHub Pages.
 
-## 遊び方
+## Play
 
-1. クリックまたはタップでボールを発射します。
-2. パドルを左右に動かしてボールを打ち返します。
-3. ブロックを壊すとスコアとコンボが増えます。
-4. 落ちてくるアイテムやコインはパドルで受け取ります。どのブロックから落ちるかは壊してからのお楽しみです。
-5. コインを使ってプレイ中にレーザー、シールド、ワイド、マルチを購入できます。
-6. すべてのボールを落とすとライフが減り、ライフが0になるとゲームオーバーです。
+Open `index.html`, or serve the folder with any static server.
 
-## 操作方法
+```bash
+python -m http.server 4173 --bind 127.0.0.1
+```
 
-- PC
-  - マウス移動: パドル移動
-  - クリック: ボール発射
-  - P: 一時停止/再開
-  - R: リスタート
+Then open `http://127.0.0.1:4173/`.
 
-- スマホ
-  - 指の左右移動: パドル移動
-  - タップ: ボール発射
-  - 右上ボタン: 一時停止/再開
-  - 下部ボタン: コイン消費強化/ショップ
+## Controls
 
-## アイテム
+- Mouse / touch: move the paddle
+- Click / tap / Space: launch the ball
+- `P` or `Esc`: pause
+- `R`: restart
+- `Shift+W`: jump to a wave for development
+- `Shift+C`: add 100 coins for development
 
-- M / Multi: ボールを2個追加します。
-- W / Wide: 12秒間パドル幅が1.5倍になります。
-- L / Laser: 8秒間パドルから自動レーザーを撃ちます。左右2本それぞれが最初に当たった対象だけを攻撃します。
-- P / Pierce: 6秒間ボールがブロックを貫通します。
-- B / Bomb: 8秒間ボール衝突時に爆発ダメージを与えます。
-- S / Shield: ボール落下を1回防ぐシールドを得ます。最大3枚です。
-- T / Slow: 8秒間ボール速度を少し下げます。
+## Current Design
 
-## コイン
+- Waves scale up to wave 10000, with speed and HUD formatting capped so the display stays readable.
+- Blue blocks are glass-like one-hit blocks.
+- Wood, stone, and metal blocks appear gradually as wave difficulty rises.
+- Boss waves appear every 5 waves. Later bosses move horizontally and fire rockets.
+- Missions give short optional goals, such as breaking blocks, collecting coins, reaching combo counts, or defeating a boss.
+- The background reacts to fever, boss warning, boss hits, and mission completion.
 
-ブロック破壊時に一定確率でコインが落ちます。取得したコインはプレイ中の強化ボタンとコインショップで使用できます。
+## Debug Helpers
 
-- ⚡ レーザー: 20 coinで5秒間レーザーを発動します。
-- 🛡 シールド: 30 coinでシールドを1枚追加します。
-- ↔ ワイド: 18 coinでパドルを広げます。
-- ● マルチ: 24 coinでボールを2個追加します。
+URL parameters:
 
-## ブロック
+```text
+?debug=1&wave=50&coins=200
+#debug=1&wave=50&coins=200
+```
 
-序盤は1回で壊せる通常ブロックが中心です。ウェーブが進むほど耐久力が上がり、2回必要な木ブロック、3回必要な石ブロック、4回必要な鋼ブロックが増えます。硬いブロックは当てるたびに見た目が段階的に変わり、最後は通常ブロックになります。
+Console API:
 
-## ボス
+```js
+BreakReactorDebug.jumpToWave(100);
+BreakReactorDebug.giveCoins(500);
+BreakReactorDebug.clearStage();
+BreakReactorDebug.state;
+```
 
-5ウェーブごとにボスが出ます。序盤のボスは赤い大きめのブロックで、低頻度のロケットを飛ばしてきます。ウェーブが進むとロケットに加えて護衛ブロックを少し生成します。ボスや護衛は既存ブロックと重ならないように配置されます。
-
-## 音
-
-効果音はWeb Audio APIで生成しています。初回クリック/タップ後に、パドル反射、ブロック破壊、コイン取得、アイテム取得、ボス撃破などの短い効果音が鳴ります。
-
-## GitHub Pagesでの公開手順
-
-1. GitHubにpush
-2. Repository Settings
-3. Pages
-4. SourceをDeploy from a branch
-5. Branchをmain
-6. Folderを/root
-7. Save
-8. 表示されたURLにアクセス
-
-## ファイル構成
+## Files
 
 ```text
 index.html
 style.css
 main.js
 README.md
+SPEC.md
 ```
-
-サーバー処理や外部ライブラリは使っていません。GitHub Pagesにそのまま配置して公開できます。

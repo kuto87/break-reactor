@@ -14,7 +14,7 @@ const BRICK_COLS = 10;
 const BRICK_WIDTH = 36;
 const BRICK_HEIGHT = 20;
 const BRICK_GAP = 5;
-const BRICK_START_Y = 90;
+const BRICK_START_Y = 102;
 const COMBO_TIME = 2;
 const ITEM_DROP_RATE = 0.045;
 const COIN_DROP_RATE = 0.15;
@@ -66,6 +66,13 @@ const itemTable = [
   { type: "shield", label: "S", color: "#6dff8f", weight: 8 }
 ];
 
+const missionTemplates = [
+  { type: "break", label: "Break blocks", base: 18, step: 2, reward: 16 },
+  { type: "coin", label: "Collect coins", base: 4, step: 1, reward: 18 },
+  { type: "combo", label: "Reach combo", base: 12, step: 3, reward: 20 },
+  { type: "special", label: "Break special blocks", base: 3, step: 1, reward: 22 }
+];
+
 const brickStyles = {
   normal: { color: "#6f8fa3", dark: "#2d4655", light: "#b9d8e2", score: 1 },
   hard: { color: "#8d8f96", dark: "#45484f", light: "#c9cbd0", score: 1.4 },
@@ -75,7 +82,7 @@ const brickStyles = {
 };
 
 const materialStyles = {
-  normal: { color: "#42bfe8", dark: "#1f6685", light: "#b7f2ff", crack: "#0b4056" },
+  normal: { color: "#55d8ff", dark: "#155a80", light: "#d7fbff", crack: "#0b4056" },
   wood: { color: "#9b6238", dark: "#5a321d", light: "#d7a060", crack: "#3e2212" },
   stone: { color: "#7d8289", dark: "#3b4047", light: "#c3c8ce", crack: "#262a31" },
   metal: { color: "#6f7686", dark: "#272c36", light: "#d6dbe7", crack: "#11151c" }
@@ -109,6 +116,7 @@ const state = {
   warningTimer: 0,
   hitStop: 0,
   shake: 0,
+  bgPulse: 0,
   lastTime: 0,
   pointerX: GAME_WIDTH / 2,
   paddle: {
@@ -127,6 +135,9 @@ const state = {
   popups: [],
   lasers: [],
   rockets: [],
+  mission: null,
+  missionStreak: 0,
+  debugMode: false,
   effects: {
     wide: 0,
     laser: 0,
@@ -140,6 +151,7 @@ const state = {
 };
 
 function init() {
+  setupDebugApi();
   resetGame();
   bindEvents();
   requestAnimationFrame(gameLoop);
@@ -152,9 +164,11 @@ function resetGame() {
   state.gameEnded = false;
   state.score = 0;
   state.best = Number(localStorage.getItem(STORAGE_KEY) || 0);
-  state.wave = 1;
+  const debugOptions = readDebugOptions();
+  state.debugMode = debugOptions.enabled;
+  state.wave = debugOptions.wave;
   state.lives = Math.min(MAX_LIVES, INITIAL_LIVES + permanentUpgrades.lifeBonus);
-  state.coins = 0;
+  state.coins = debugOptions.coins;
   state.combo = 0;
   state.comboTimer = 0;
   state.feverTimer = 0;
@@ -165,6 +179,7 @@ function resetGame() {
   state.warningTimer = 0;
   state.hitStop = 0;
   state.shake = 0;
+  state.bgPulse = 0;
   state.paddle.baseWidth = INITIAL_PADDLE_WIDTH + permanentUpgrades.paddleWidthBonus;
   state.paddle.width = state.paddle.baseWidth;
   state.paddle.x = GAME_WIDTH / 2;
@@ -178,6 +193,8 @@ function resetGame() {
   state.popups.length = 0;
   state.lasers.length = 0;
   state.rockets.length = 0;
+  state.mission = null;
+  state.missionStreak = 0;
   state.effects.wide = 0;
   state.effects.laser = 0;
   state.effects.laserCooldown = 0;
@@ -192,6 +209,45 @@ function resetGame() {
   setOverlay(gameOverOverlay, false);
   setOverlay(shopOverlay, false);
   updateButtons();
+}
+
+function readDebugOptions() {
+  const params = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const wave = clamp(Math.floor(Number(params.get("wave") || hashParams.get("wave") || 1)), 1, 10000);
+  const coins = clamp(Math.floor(Number(params.get("coins") || hashParams.get("coins") || 0)), 0, 999999);
+  const enabled = params.has("debug") || hashParams.has("debug") || wave > 1 || coins > 0;
+  return { enabled, wave, coins };
+}
+
+function setupDebugApi() {
+  window.BreakReactorDebug = {
+    state,
+    jumpToWave,
+    giveCoins(amount = 100) {
+      state.coins = clamp(state.coins + Math.floor(amount), 0, 999999);
+      state.debugMode = true;
+      updateButtons();
+    },
+    clearStage() {
+      for (const brick of [...state.bricks]) destroyBrick(brick);
+      if (state.boss) damageBoss(state.boss.hp, state.boss.x + state.boss.w / 2, state.boss.y + state.boss.h / 2);
+    }
+  };
+}
+
+function jumpToWave(wave) {
+  const nextWave = clamp(Math.floor(Number(wave) || 1), 1, 10000);
+  state.wave = nextWave;
+  state.waveKills = 0;
+  state.waveBanner = 1.1;
+  state.bannerText = `WAVE ${state.wave}`;
+  state.boss = null;
+  state.bricks.length = 0;
+  state.rockets.length = 0;
+  state.lasers.length = 0;
+  state.debugMode = true;
+  generateWave();
 }
 
 function bindEvents() {
@@ -232,6 +288,15 @@ function bindEvents() {
     unlockAudio();
     if (event.code === "KeyP" || event.code === "Escape") togglePause();
     if (event.code === "KeyR") resetGame();
+    if (event.shiftKey && event.code === "KeyW") {
+      const value = window.prompt("Jump to wave (1-10000)", String(state.wave));
+      if (value !== null) jumpToWave(value);
+    }
+    if (event.shiftKey && event.code === "KeyC") {
+      state.coins = clamp(state.coins + 100, 0, 999999);
+      state.debugMode = true;
+      updateButtons();
+    }
     if (event.code === "Space") {
       event.preventDefault();
       launchBall();
@@ -285,6 +350,7 @@ function update(dt) {
   state.warningTimer = Math.max(0, state.warningTimer - dt);
   state.feverTimer = Math.max(0, state.feverTimer - dt);
   state.shake = Math.max(0, state.shake - dt * 18);
+  state.bgPulse = Math.max(0, state.bgPulse - dt * 2.4);
 
   if (!state.boss && state.waveKills >= state.waveTarget) advanceWave();
   updateButtons();
@@ -323,6 +389,8 @@ function updateBalls(dt) {
       continue;
     }
 
+    ball.prevX = ball.x;
+    ball.prevY = ball.y;
     ball.x += ball.vx * dt * 60;
     ball.y += ball.vy * dt * 60;
 
@@ -382,8 +450,7 @@ function generateWave() {
     return;
   }
 
-  const rows = clamp(3 + Math.floor(state.wave / 2), 3, 7);
-  const hpBase = clamp(1 + Math.floor(Math.max(0, state.wave - 2) / 2), 1, 4);
+  const rows = clamp(3 + Math.floor(Math.max(0, state.wave - 1) / 3), 3, 7);
   const specialRate = clamp(0.06 + state.wave * 0.014, 0.06, 0.28);
   const countChance = clamp(0.7 + state.wave * 0.022, 0.7, 0.94);
   const left = (GAME_WIDTH - (BRICK_COLS * BRICK_WIDTH + (BRICK_COLS - 1) * BRICK_GAP)) / 2;
@@ -392,9 +459,7 @@ function generateWave() {
     for (let col = 0; col < BRICK_COLS; col += 1) {
       if (Math.random() > countChance) continue;
       const type = state.wave <= 2 ? "normal" : Math.random() < specialRate ? pickBrickType() : "normal";
-      const hpBonus = type === "hard" ? 1 : type === "normal" ? 0 : 0;
-      const earlyEasy = state.wave <= 2 && type !== "hard";
-      const maxHp = earlyEasy ? 1 : clamp(hpBase + hpBonus + (Math.random() < 0.14 ? 1 : 0), 1, 4);
+      const maxHp = pickBrickHp(type);
       addBrick(left + col * (BRICK_WIDTH + BRICK_GAP), BRICK_START_Y + row * (BRICK_HEIGHT + BRICK_GAP), type, maxHp);
     }
   }
@@ -403,6 +468,7 @@ function generateWave() {
   state.waveKills = 0;
   state.bannerText = `WAVE ${state.wave}`;
   state.waveBanner = 1.25;
+  startMission();
 }
 
 function preventDoubleTapZoom(event) {
@@ -420,6 +486,7 @@ function spawnBoss() {
   clearBricksInRect({ x: bossX - 8, y: targetY - 8, w: bossWidth + 16, h: bossHeight + 54 });
   state.boss = {
     x: bossX,
+    baseX: bossX,
     y: -110,
     targetY,
     w: bossWidth,
@@ -429,11 +496,26 @@ function spawnBoss() {
     maxHp: tier === "small" ? 10 + state.wave : tier === "mid" ? 38 + state.wave * 4 : 92 + state.wave * 7,
     summonTimer: tier === "small" ? 999 : tier === "mid" ? 7.5 : 5.8,
     rocketTimer: tier === "small" ? 3.2 : tier === "mid" ? 2.8 : 2.2,
-    phase: 0
+    phase: 0,
+    moveAmp: bossMoveAmplitude(state.wave, tier),
+    moveSpeed: bossMoveSpeed(state.wave, tier)
   };
   state.waveTarget = 99999;
   state.waveKills = 0;
   state.shake = 5;
+  startMission();
+}
+
+function bossMoveAmplitude(wave, tier) {
+  if (wave < 10) return 0;
+  const tierBase = tier === "mid" ? 18 : 30;
+  return clamp(tierBase + Math.floor(wave / 12) * 4, 12, 58);
+}
+
+function bossMoveSpeed(wave, tier) {
+  if (wave < 10) return 0;
+  const tierBase = tier === "mid" ? 0.72 : 0.95;
+  return clamp(tierBase + wave * 0.006, 0.55, 1.8);
 }
 
 function getBossTier(wave) {
@@ -446,6 +528,10 @@ function updateBoss(dt) {
   if (!state.boss) return;
   const boss = state.boss;
   boss.y = lerp(boss.y, boss.targetY, Math.min(1, dt * 2.8));
+  if (boss.moveAmp > 0 && Math.abs(boss.y - boss.targetY) < 24) {
+    const targetX = boss.baseX + Math.sin(boss.phase * boss.moveSpeed) * boss.moveAmp;
+    boss.x = clamp(lerp(boss.x, targetX, Math.min(1, dt * 3.2)), 16, GAME_WIDTH - boss.w - 16);
+  }
   boss.summonTimer -= dt;
   boss.rocketTimer -= dt;
   boss.phase += dt;
@@ -524,6 +610,8 @@ function destroyBrick(brick, x = brick.x + brick.w / 2, y = brick.y + brick.h / 
   if (index === -1) return;
   state.bricks.splice(index, 1);
   state.waveKills += 1;
+  updateMission("break", 1);
+  if (brick.type !== "normal") updateMission("special", 1);
 
   const baseScore = 10 * brick.maxHp * brickStyles[brick.type].score;
   const gain = Math.round(baseScore * scoreMultiplier());
@@ -531,6 +619,7 @@ function destroyBrick(brick, x = brick.x + brick.w / 2, y = brick.y + brick.h / 
   state.best = Math.max(state.best, state.score);
   state.combo += 1;
   state.comboTimer = COMBO_TIME;
+  updateMission("combo", state.combo, true);
   if (state.combo === 100) {
     state.feverTimer = 10;
     addPopup("FEVER", GAME_WIDTH / 2, 250, "#ff3df2", 1.7);
@@ -583,7 +672,7 @@ function applyItem(type) {
   if (type === "bomb") state.effects.bomb += 8;
   if (type === "shield") state.effects.shield = Math.min(3, state.effects.shield + 1);
   if (type === "slow") state.effects.slow += 8;
-  addPopup(itemName(type), state.paddle.x, state.paddle.y - 46, itemColor(type), 1.1);
+  addPopup(itemNameV2(type), state.paddle.x, state.paddle.y - 46, itemColor(type), 1.1);
   playSfx("item");
   burst(state.paddle.x, state.paddle.y - 10, itemColor(type), 24, 4);
 }
@@ -621,6 +710,46 @@ function buyMulti() {
   applyItem("multi");
   playSfx("buy");
   updateButtons();
+}
+
+function startMission() {
+  if (state.boss) {
+    state.mission = {
+      type: "boss",
+      label: "Defeat the reactor",
+      target: 1,
+      progress: 0,
+      reward: clamp(28 + Math.floor(state.wave / 5) * 4, 28, 1200),
+      done: false
+    };
+    return;
+  }
+
+  const template = missionTemplates[(state.wave + state.missionStreak) % missionTemplates.length];
+  const target = clamp(template.base + Math.floor(state.wave / 3) * template.step, template.base, 9999);
+  state.mission = {
+    type: template.type,
+    label: template.label,
+    target,
+    progress: 0,
+    reward: clamp(template.reward + Math.floor(state.wave / 8) * 3, template.reward, 999),
+    done: false
+  };
+}
+
+function updateMission(type, amount = 1, absolute = false) {
+  const mission = state.mission;
+  if (!mission || mission.done || mission.type !== type) return;
+  mission.progress = absolute ? Math.max(mission.progress, amount) : mission.progress + amount;
+  if (mission.progress < mission.target) return;
+  mission.done = true;
+  state.missionStreak += 1;
+  state.coins = clamp(state.coins + mission.reward, 0, 999999);
+  state.score += mission.reward * 20;
+  state.best = Math.max(state.best, state.score);
+  state.bgPulse = 1;
+  addPopup(`MISSION +${mission.reward}C`, GAME_WIDTH / 2, 190, "#9fffc9", 1.25);
+  burst(GAME_WIDTH / 2, 190, "#9fffc9", 34, 4.4);
 }
 
 function updateItems(dt) {
@@ -675,9 +804,10 @@ function checkCollisions() {
     }
 
     if (state.boss && circleRect(ball, state.boss)) {
+      const hitBoss = state.boss;
       damageBoss(1, ball.x, ball.y);
       if (state.effects.bomb > 0) explodeAt(ball.x, ball.y, 64, 1);
-      if (state.effects.pierce <= 0) ball.vy *= -1;
+      if (state.effects.pierce <= 0) reflectBallFromRect(ball, hitBoss);
     }
 
     for (const brick of [...state.bricks]) {
@@ -700,6 +830,7 @@ function checkCollisions() {
     if (circleRect(coin, paddleRect)) {
       state.coinDrops.splice(state.coinDrops.indexOf(coin), 1);
       state.coins += coin.value;
+      updateMission("coin", coin.value);
       addPopup(`+${coin.value} COIN`, coin.x, coin.y, "#ffe668", 0.72);
       playSfx("coin");
       burst(coin.x, coin.y, "#ffe668", 16, 3);
@@ -712,6 +843,7 @@ function damageBoss(amount, x, y) {
   state.boss.hp -= amount;
   burst(x, y, bossColor(), 8, 3);
   state.shake = Math.max(state.shake, 2.5);
+  state.bgPulse = Math.min(1, state.bgPulse + 0.18);
   if (state.boss.hp <= 0) {
     const bonus = state.wave * 500;
     state.score += bonus;
@@ -721,6 +853,7 @@ function damageBoss(amount, x, y) {
     state.shake = 9;
     state.hitStop = 0.07;
     state.boss = null;
+    updateMission("boss", 1);
     playSfx("bossDown");
     advanceWave();
   }
@@ -815,6 +948,10 @@ function togglePause() {
     return;
   }
   state.paused = !state.paused;
+  if (state.paused) {
+    state.shake = 0;
+    state.hitStop = 0;
+  }
   setOverlay(pauseOverlay, state.paused);
   updateButtons();
 }
@@ -856,8 +993,9 @@ function gameOver() {
 
 function draw() {
   ctx.save();
-  const sx = state.shake > 0 ? randomRange(-state.shake, state.shake) : 0;
-  const sy = state.shake > 0 ? randomRange(-state.shake, state.shake) : 0;
+  const shake = state.paused || state.shopOpen || state.gameEnded ? 0 : state.shake;
+  const sx = shake > 0 ? randomRange(-shake, shake) : 0;
+  const sy = shake > 0 ? randomRange(-shake, shake) : 0;
   ctx.translate(sx, sy);
   drawBackground();
   drawBricks();
@@ -870,7 +1008,7 @@ function draw() {
   drawCoins();
   drawParticles();
   drawPopups();
-  drawHud();
+  drawHudV2();
   drawBanners();
   ctx.restore();
 }
@@ -878,28 +1016,44 @@ function draw() {
 function drawBackground() {
   const bossTint = state.boss || state.warningTimer > 0;
   const fever = state.feverTimer > 0;
+  const pulse = state.bgPulse;
   const gradient = ctx.createLinearGradient(0, 0, 0, GAME_HEIGHT);
-  gradient.addColorStop(0, bossTint ? "#211414" : fever ? "#1f251d" : "#12171b");
-  gradient.addColorStop(0.55, fever ? "#211d17" : "#161412");
-  gradient.addColorStop(1, "#080806");
+  gradient.addColorStop(0, bossTint ? shadeColor("#211414", pulse * 34) : fever ? "#1f251d" : shadeColor("#101a1f", pulse * 18));
+  gradient.addColorStop(0.5, fever ? "#211d17" : shadeColor("#121515", pulse * 12));
+  gradient.addColorStop(1, bossTint ? "#120809" : "#07090b");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-  const t = performance.now() * 0.00042;
-  ctx.globalAlpha = fever ? 0.34 : 0.22;
-  ctx.strokeStyle = fever ? "#ffe48c" : "#31404a";
+  const t = performance.now() * 0.001;
+  ctx.globalAlpha = fever ? 0.38 : bossTint ? 0.32 + pulse * 0.18 : 0.26 + pulse * 0.14;
+  ctx.strokeStyle = fever ? "#ffe48c" : bossTint ? "#7a3034" : "#34505d";
   ctx.lineWidth = 1.1;
   for (let y = 60; y < GAME_HEIGHT; y += 34) {
     ctx.beginPath();
-    const rowDrift = Math.sin(y * 0.037 + t * 0.7) * 2.2;
+    const rowDrift = Math.sin(y * 0.037 + t * 0.95) * (3.4 + pulse * 4);
     const rowPhase = Math.sin(y * 0.011) * 3.4;
     for (let x = 0; x <= GAME_WIDTH; x += 10) {
-      const soft = Math.sin(x * 0.024 + y * 0.033 + t + rowPhase) * 5.3;
-      const lazy = Math.sin(x * 0.011 - y * 0.019 + t * 0.37) * 2.8;
+      const soft = Math.sin(x * 0.024 + y * 0.033 + t * 1.8 + rowPhase) * (5.8 + pulse * 5);
+      const lazy = Math.sin(x * 0.011 - y * 0.019 + t * 0.72) * 3.4;
       const waveY = y + rowDrift + soft + lazy;
       if (x === 0) ctx.moveTo(x, waveY);
       else ctx.lineTo(x, waveY);
     }
+    ctx.stroke();
+  }
+
+  if (bossTint || pulse > 0) {
+    const cx = state.boss ? state.boss.x + state.boss.w / 2 : GAME_WIDTH / 2;
+    const cy = state.boss ? state.boss.y + state.boss.h / 2 : 136;
+    const ring = 56 + Math.sin(t * 4) * 8 + pulse * 28;
+    ctx.globalAlpha = 0.18 + pulse * 0.28;
+    ctx.strokeStyle = bossTint ? "#ff6b5f" : "#49c7ff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, ring, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, ring * 0.58, 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
@@ -952,6 +1106,86 @@ function drawEffectTimers() {
   }
 }
 
+function drawHudV2() {
+  const entries = [
+    ["SCORE", state.score],
+    ["BEST", state.best],
+    ["WAVE", state.wave],
+    ["LIFE", state.lives],
+    ["COIN", state.coins],
+    ["COMBO", state.combo]
+  ];
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.font = "800 10px Segoe UI, Arial";
+  entries.forEach(([label, value], index) => {
+    const x = 12 + (index % 3) * 124;
+    const y = 9 + Math.floor(index / 3) * 22;
+    ctx.fillStyle = "rgba(245,251,255,0.62)";
+    ctx.fillText(label, x, y);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "900 14px Segoe UI, Arial";
+    ctx.fillText(formatHudValue(value), x + 43, y - 2);
+    ctx.font = "800 10px Segoe UI, Arial";
+  });
+
+  drawEffectTimersV2();
+  drawMissionPanel();
+  if (state.debugMode) drawDebugLabel();
+  if (state.boss) drawBossHp();
+}
+
+function drawEffectTimersV2() {
+  const active = [];
+  if (state.effects.wide > 0) active.push(["WIDE", state.effects.wide, "#49c7ff"]);
+  if (state.effects.laser > 0) active.push(["LASER", state.effects.laser, "#49c7ff"]);
+  if (state.effects.pierce > 0) active.push(["PIERCE", state.effects.pierce, "#ffffff"]);
+  if (state.effects.bomb > 0) active.push(["BOMB", state.effects.bomb, "#ff9a72"]);
+  if (state.effects.slow > 0) active.push(["SLOW", state.effects.slow, "#9fffc9"]);
+  active.forEach(([label, value, color], index) => {
+    const y = 63 + index * 14;
+    ctx.fillStyle = color;
+    ctx.font = "800 10px Segoe UI, Arial";
+    ctx.fillText(`${label} ${value.toFixed(1)}s`, 12, y);
+  });
+  if (state.effects.shield > 0) {
+    ctx.fillStyle = "#6dff8f";
+    ctx.font = "900 11px Segoe UI, Arial";
+    ctx.fillText(`SHIELD x${state.effects.shield}`, 302, 58);
+  }
+}
+
+function drawMissionPanel() {
+  if (!state.mission) return;
+  const mission = state.mission;
+  const x = state.boss ? 214 : 12;
+  const y = 61;
+  const w = state.boss ? 194 : 196;
+  const pct = clamp(mission.progress / mission.target, 0, 1);
+  ctx.save();
+  ctx.fillStyle = "rgba(5, 8, 12, 0.58)";
+  roundRect(x, y, w, 24, 6);
+  ctx.fill();
+  ctx.fillStyle = mission.done ? "rgba(159,255,201,0.84)" : "rgba(73,199,255,0.72)";
+  roundRect(x + 3, y + 18, (w - 6) * pct, 3, 2);
+  ctx.fill();
+  ctx.fillStyle = mission.done ? "#9fffc9" : "#f7fbff";
+  ctx.font = "800 9px Segoe UI, Arial";
+  ctx.fillText(`MISSION: ${mission.label}`, x + 7, y + 4);
+  ctx.textAlign = "right";
+  ctx.fillText(`${Math.min(mission.progress, mission.target)}/${mission.target} +${mission.reward}C`, x + w - 7, y + 4);
+  ctx.restore();
+}
+
+function drawDebugLabel() {
+  ctx.save();
+  ctx.textAlign = "right";
+  ctx.fillStyle = "rgba(255,230,104,0.82)";
+  ctx.font = "900 9px Segoe UI, Arial";
+  ctx.fillText("DEBUG Shift+W wave / Shift+C coins", GAME_WIDTH - 12, 648);
+  ctx.restore();
+}
+
 function drawBossHp() {
   const pct = clamp(state.boss.hp / state.boss.maxHp, 0, 1);
   ctx.fillStyle = "rgba(255,255,255,0.12)";
@@ -981,24 +1215,22 @@ function drawBricks() {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.strokeStyle = material.crack;
-    ctx.globalAlpha = 0.36;
-    ctx.beginPath();
-    ctx.moveTo(brick.x + 6, brick.y + 6);
-    ctx.lineTo(brick.x + brick.w - 7, brick.y + 4 + Math.sin(brick.pulse) * 1.5);
-    ctx.moveTo(brick.x + 7, brick.y + brick.h - 6);
-    ctx.lineTo(brick.x + brick.w - 6, brick.y + brick.h - 7);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
+    drawBrickTexture(brick, material);
 
     if (brick.hp < brick.maxHp) {
       ctx.strokeStyle = material.crack;
+      ctx.lineWidth = 1.4;
+      ctx.globalAlpha = 0.72;
       ctx.beginPath();
-      ctx.moveTo(brick.x + brick.w * 0.26, brick.y + 4);
-      ctx.lineTo(brick.x + brick.w * 0.42, brick.y + brick.h - 5);
-      ctx.moveTo(brick.x + brick.w * 0.62, brick.y + 5);
-      ctx.lineTo(brick.x + brick.w * 0.76, brick.y + brick.h - 4);
+      ctx.moveTo(brick.x + brick.w * 0.24, brick.y + 5);
+      ctx.lineTo(brick.x + brick.w * 0.38, brick.y + brick.h * 0.48);
+      ctx.lineTo(brick.x + brick.w * 0.32, brick.y + brick.h - 5);
+      ctx.moveTo(brick.x + brick.w * 0.62, brick.y + 4);
+      ctx.lineTo(brick.x + brick.w * 0.74, brick.y + brick.h * 0.42);
+      ctx.lineTo(brick.x + brick.w * 0.68, brick.y + brick.h - 4);
       ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1;
     }
 
     ctx.fillStyle = "rgba(255,248,230,0.72)";
@@ -1009,6 +1241,65 @@ function drawBricks() {
     if (glyph) ctx.fillText(glyph, brick.x + brick.w / 2, brick.y + brick.h / 2 + 1);
     ctx.restore();
   }
+}
+
+function drawBrickTexture(brick, material) {
+  ctx.save();
+  roundRect(brick.x + 1, brick.y + 1, brick.w - 2, brick.h - 2, 4);
+  ctx.clip();
+  ctx.lineCap = "round";
+
+  if (material === materialStyles.wood) {
+    ctx.strokeStyle = "rgba(62,34,18,0.34)";
+    ctx.lineWidth = 1.1;
+    for (let i = 0; i < 3; i += 1) {
+      const y = brick.y + 5 + i * 5 + Math.sin(brick.pulse + i) * 0.7;
+      ctx.beginPath();
+      ctx.moveTo(brick.x + 4, y);
+      ctx.bezierCurveTo(brick.x + 13, y - 2, brick.x + 22, y + 2, brick.x + brick.w - 4, y - 0.5);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.ellipse(brick.x + brick.w * 0.62, brick.y + brick.h * 0.52, 4.2, 2.5, -0.2, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (material === materialStyles.stone) {
+    ctx.strokeStyle = "rgba(38,42,49,0.42)";
+    ctx.lineWidth = 1.15;
+    ctx.beginPath();
+    ctx.moveTo(brick.x + 8, brick.y + 4);
+    ctx.lineTo(brick.x + 13, brick.y + 10);
+    ctx.lineTo(brick.x + 10, brick.y + 16);
+    ctx.moveTo(brick.x + 23, brick.y + 3);
+    ctx.lineTo(brick.x + 19, brick.y + 9);
+    ctx.lineTo(brick.x + 28, brick.y + 15);
+    ctx.stroke();
+  } else if (material === materialStyles.metal) {
+    ctx.strokeStyle = "rgba(17,21,28,0.4)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(brick.x + brick.w * 0.5, brick.y + 3);
+    ctx.lineTo(brick.x + brick.w * 0.5, brick.y + brick.h - 3);
+    ctx.moveTo(brick.x + 4, brick.y + brick.h * 0.5);
+    ctx.lineTo(brick.x + brick.w - 4, brick.y + brick.h * 0.5);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(230,235,245,0.4)";
+    ctx.fillRect(brick.x + 6, brick.y + 5, 2, 2);
+    ctx.fillRect(brick.x + brick.w - 8, brick.y + brick.h - 7, 2, 2);
+  } else {
+    ctx.strokeStyle = "rgba(183,242,255,0.34)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(brick.x + 5, brick.y + 6);
+    ctx.quadraticCurveTo(brick.x + brick.w * 0.5, brick.y + 2.5, brick.x + brick.w - 5, brick.y + 6);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(11,64,86,0.25)";
+    ctx.beginPath();
+    ctx.moveTo(brick.x + 7, brick.y + brick.h - 6);
+    ctx.lineTo(brick.x + brick.w - 7, brick.y + brick.h - 7);
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 function drawBoss() {
@@ -1233,11 +1524,46 @@ function explodeAt(x, y, radius, damage) {
 }
 
 function reflectBallFromRect(ball, rect) {
-  const prevX = ball.x - ball.vx;
-  const prevY = ball.y - ball.vy;
-  if (prevX <= rect.x || prevX >= rect.x + rect.w) ball.vx *= -1;
-  else if (prevY <= rect.y || prevY >= rect.y + rect.h) ball.vy *= -1;
-  else ball.vy *= -1;
+  const prevX = ball.prevX ?? ball.x - ball.vx;
+  const prevY = ball.prevY ?? ball.y - ball.vy;
+  const r = ball.r + 0.5;
+  const cameFromLeft = prevX <= rect.x - r;
+  const cameFromRight = prevX >= rect.x + rect.w + r;
+  const cameFromTop = prevY <= rect.y - r;
+  const cameFromBottom = prevY >= rect.y + rect.h + r;
+
+  let axis = "y";
+  if ((cameFromLeft || cameFromRight) && !(cameFromTop || cameFromBottom)) {
+    axis = "x";
+  } else if ((cameFromTop || cameFromBottom) && !(cameFromLeft || cameFromRight)) {
+    axis = "y";
+  } else {
+    const pushLeft = Math.abs(ball.x - (rect.x - r));
+    const pushRight = Math.abs(ball.x - (rect.x + rect.w + r));
+    const pushTop = Math.abs(ball.y - (rect.y - r));
+    const pushBottom = Math.abs(ball.y - (rect.y + rect.h + r));
+    axis = Math.min(pushLeft, pushRight) < Math.min(pushTop, pushBottom) ? "x" : "y";
+  }
+
+  if (axis === "x") {
+    ball.x = cameFromRight ? rect.x + rect.w + r : rect.x - r;
+    ball.vx = cameFromRight ? Math.abs(ball.vx) : -Math.abs(ball.vx);
+  } else {
+    ball.y = cameFromBottom ? rect.y + rect.h + r : rect.y - r;
+    ball.vy = cameFromBottom ? Math.abs(ball.vy) : -Math.abs(ball.vy);
+  }
+
+  keepBallAnglePlayable(ball);
+}
+
+function keepBallAnglePlayable(ball) {
+  const speed = Math.max(getBallSpeed() * 0.92, Math.hypot(ball.vx, ball.vy));
+  const minVertical = Math.min(speed * 0.42, 2.4);
+  if (Math.abs(ball.vy) < minVertical) {
+    const sign = ball.vy < 0 ? -1 : 1;
+    ball.vy = sign * minVertical;
+    ball.vx = Math.sign(ball.vx || randomRange(-1, 1)) * Math.sqrt(Math.max(0.1, speed * speed - ball.vy * ball.vy));
+  }
 }
 
 function burst(x, y, color, count, force) {
@@ -1399,6 +1725,21 @@ function pickBrickType() {
   return "item";
 }
 
+function pickBrickHp(type) {
+  if (state.wave <= 3 && type !== "hard") return 1;
+
+  const woodRate = clamp((state.wave - 3) * 0.045, 0, 0.32);
+  const stoneRate = state.wave >= 8 ? clamp((state.wave - 7) * 0.032, 0, 0.16) : 0;
+  const metalRate = state.wave >= 14 ? clamp((state.wave - 13) * 0.018, 0, 0.08) : 0;
+  const hardBonus = type === "hard" ? 0.16 : 0;
+  const roll = Math.random();
+
+  if (roll < metalRate + hardBonus * 0.2) return 4;
+  if (roll < metalRate + stoneRate + hardBonus * 0.55) return 3;
+  if (roll < metalRate + stoneRate + woodRate + hardBonus) return 2;
+  return 1;
+}
+
 function brickGlyph(type) {
   return { normal: "", hard: "", bomb: "", coin: "", item: "" }[type];
 }
@@ -1427,6 +1768,18 @@ function itemName(type) {
   }[type] || type;
 }
 
+function itemNameV2(type) {
+  return {
+    multi: "MULTI",
+    wide: "WIDE",
+    laser: "LASER",
+    pierce: "PIERCE",
+    bomb: "BOMB",
+    shield: "SHIELD",
+    slow: "SLOW"
+  }[type] || type;
+}
+
 function bossColor() {
   if (!state.boss) return "#d9413f";
   const hp = state.boss.hp / state.boss.maxHp;
@@ -1440,6 +1793,14 @@ function shadeColor(hex, percent) {
   const g = clamp(((value >> 8) & 0xff) + amt, 0, 255);
   const b = clamp((value & 0xff) + amt, 0, 255);
   return `rgb(${r},${g},${b})`;
+}
+
+function formatHudValue(value) {
+  const n = Number(value) || 0;
+  if (Math.abs(n) >= 1000000000) return `${(n / 1000000000).toFixed(1)}B`;
+  if (Math.abs(n) >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (Math.abs(n) >= 100000) return `${Math.round(n / 1000)}K`;
+  return String(Math.floor(n));
 }
 
 function roundRect(x, y, w, h, r) {
@@ -1466,6 +1827,37 @@ function randomRange(min, max) {
 
 function distance(x1, y1, x2, y2) {
   return Math.hypot(x1 - x2, y1 - y2);
+}
+
+function gameOver() {
+  state.gameEnded = true;
+  state.running = false;
+  playSfx("gameOver");
+  if (state.score > Number(localStorage.getItem(STORAGE_KEY) || 0)) {
+    localStorage.setItem(STORAGE_KEY, String(state.score));
+  }
+  state.best = Number(localStorage.getItem(STORAGE_KEY) || state.best);
+  gameOverStats.innerHTML = `
+    <dt>Score</dt><dd>${formatHudValue(state.score)}</dd>
+    <dt>Best</dt><dd>${formatHudValue(state.best)}</dd>
+    <dt>Wave</dt><dd>${state.wave}</dd>
+    <dt>Coins</dt><dd>${state.coins}</dd>
+  `;
+  setOverlay(gameOverOverlay, true);
+  updateButtons();
+}
+
+function updateButtons() {
+  buyLaserButton.disabled = !canUseUpgrades() || state.coins < LASER_COST;
+  buyShieldButton.disabled = !canUseUpgrades() || state.coins < SHIELD_COST || state.effects.shield >= 3;
+  shopButton.disabled = state.gameEnded;
+  shopLaserButton.disabled = !canBuy() || state.coins < LASER_COST;
+  shopShieldButton.disabled = !canBuy() || state.coins < SHIELD_COST || state.effects.shield >= 3;
+  shopWideButton.disabled = !canBuy() || state.coins < WIDE_COST;
+  shopMultiButton.disabled = !canBuy() || state.coins < MULTI_COST || state.balls.length >= MAX_BALLS;
+  shopCoinText.textContent = `Coins ${state.coins}`;
+  pauseButton.disabled = state.gameEnded;
+  pauseButton.textContent = state.paused ? ">" : "||";
 }
 
 init();

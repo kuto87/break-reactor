@@ -401,16 +401,17 @@ function updateBalls(dt) {
       continue;
     }
 
-    const moveX = ball.vx * dt * 60;
-    const moveY = ball.vy * dt * 60;
-    const steps = Math.max(1, Math.ceil(Math.hypot(moveX, moveY) / (ball.r * 0.42)));
+    const distanceThisFrame = Math.hypot(ball.vx * dt * 60, ball.vy * dt * 60);
+    const steps = Math.max(1, Math.ceil(distanceThisFrame / (ball.r * 0.42)));
+    const stepDt = dt / steps;
     for (let i = 0; i < steps; i += 1) {
       ball.prevX = ball.x;
       ball.prevY = ball.y;
-      ball.x += moveX / steps;
-      ball.y += moveY / steps;
+      ball.x += ball.vx * stepDt * 60;
+      ball.y += ball.vy * stepDt * 60;
       constrainBallToWalls(ball);
-      checkBallSolidCollisions(ball);
+      const bounced = checkBallSolidCollisions(ball);
+      if (bounced && state.effects.pierce <= 0) break;
     }
     tuneBallSpeed(ball, dt);
   }
@@ -847,7 +848,7 @@ function checkBallSolidCollisions(ball) {
     ball.y = paddleRect.y - ball.r - 1;
     playSfx("paddle");
     burst(ball.x, ball.y, "#49c7ff", 5, 2.5);
-    return;
+    return true;
   }
 
   if (state.boss && circleRect(ball, state.boss)) {
@@ -855,16 +856,17 @@ function checkBallSolidCollisions(ball) {
     damageBoss(1, ball.x, ball.y);
     if (state.effects.bomb > 0) explodeAt(ball.x, ball.y, 64, 1);
     if (state.effects.pierce <= 0) reflectBallFromRect(ball, hitBoss);
-    return;
+    return true;
   }
 
   const contacts = findBallBrickContacts(ball, state.effects.pierce > 0 ? 4 : 2);
 
-  if (contacts.length === 0) return;
+  if (contacts.length === 0) return false;
   const primary = contacts[0];
   for (const brick of contacts) damageBrick(brick, 1, ball.x, ball.y);
   if (state.effects.bomb > 0) explodeAt(ball.x, ball.y, 58, 1);
   if (state.effects.pierce <= 0) reflectBallFromRect(ball, primary);
+  return true;
 }
 
 function findBallBrickContacts(ball, limit) {

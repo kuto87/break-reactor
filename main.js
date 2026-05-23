@@ -67,10 +67,10 @@ const itemTable = [
 ];
 
 const missionTemplates = [
-  { type: "break", label: "Break blocks", base: 18, step: 2, reward: 16 },
-  { type: "coin", label: "Collect coins", base: 4, step: 1, reward: 18 },
-  { type: "combo", label: "Reach combo", base: 12, step: 3, reward: 20 },
-  { type: "special", label: "Break special blocks", base: 3, step: 1, reward: 22 }
+  { type: "break", label: "ブロック破壊", base: 18, step: 2, reward: 16 },
+  { type: "coin", label: "コイン回収", base: 4, step: 1, reward: 18 },
+  { type: "combo", label: "コンボ到達", base: 12, step: 3, reward: 20 },
+  { type: "special", label: "特殊ブロック破壊", base: 3, step: 1, reward: 22 }
 ];
 
 const brickStyles = {
@@ -289,7 +289,7 @@ function bindEvents() {
     if (event.code === "KeyP" || event.code === "Escape") togglePause();
     if (event.code === "KeyR") resetGame();
     if (event.shiftKey && event.code === "KeyW") {
-      const value = window.prompt("Jump to wave (1-10000)", String(state.wave));
+      const value = window.prompt("開始したいWAVEを入力 (1-10000)", String(state.wave));
       if (value !== null) jumpToWave(value);
     }
     if (event.shiftKey && event.code === "KeyC") {
@@ -389,29 +389,37 @@ function updateBalls(dt) {
       continue;
     }
 
-    ball.prevX = ball.x;
-    ball.prevY = ball.y;
-    ball.x += ball.vx * dt * 60;
-    ball.y += ball.vy * dt * 60;
-
-    if (ball.x < ball.r) {
-      ball.x = ball.r;
-      ball.vx = Math.abs(ball.vx);
+    const moveX = ball.vx * dt * 60;
+    const moveY = ball.vy * dt * 60;
+    const steps = Math.max(1, Math.ceil(Math.hypot(moveX, moveY) / (ball.r * 0.42)));
+    for (let i = 0; i < steps; i += 1) {
+      ball.prevX = ball.x;
+      ball.prevY = ball.y;
+      ball.x += moveX / steps;
+      ball.y += moveY / steps;
+      constrainBallToWalls(ball);
+      checkBallSolidCollisions(ball);
     }
-    if (ball.x > GAME_WIDTH - ball.r) {
-      ball.x = GAME_WIDTH - ball.r;
-      ball.vx = -Math.abs(ball.vx);
-    }
-    if (ball.y < 56 + ball.r) {
-      ball.y = 56 + ball.r;
-      ball.vy = Math.abs(ball.vy);
-    }
-
     tuneBallSpeed(ball, dt);
   }
 
   state.balls = state.balls.filter((ball) => ball.y < GAME_HEIGHT + 42);
   if (state.balls.length === 0) handleAllBallsLost();
+}
+
+function constrainBallToWalls(ball) {
+  if (ball.x < ball.r) {
+    ball.x = ball.r;
+    ball.vx = Math.abs(ball.vx);
+  }
+  if (ball.x > GAME_WIDTH - ball.r) {
+    ball.x = GAME_WIDTH - ball.r;
+    ball.vx = -Math.abs(ball.vx);
+  }
+  if (ball.y < 56 + ball.r) {
+    ball.y = 56 + ball.r;
+    ball.vy = Math.abs(ball.vy);
+  }
 }
 
 function handleAllBallsLost() {
@@ -492,8 +500,8 @@ function spawnBoss() {
     w: bossWidth,
     h: bossHeight,
     tier,
-    hp: tier === "small" ? 10 + state.wave : tier === "mid" ? 38 + state.wave * 4 : 92 + state.wave * 7,
-    maxHp: tier === "small" ? 10 + state.wave : tier === "mid" ? 38 + state.wave * 4 : 92 + state.wave * 7,
+    hp: getBossHp(state.wave, tier),
+    maxHp: getBossHp(state.wave, tier),
     summonTimer: tier === "small" ? 999 : tier === "mid" ? 7.5 : 5.8,
     rocketTimer: tier === "small" ? 3.2 : tier === "mid" ? 2.8 : 2.2,
     phase: 0,
@@ -522,6 +530,13 @@ function getBossTier(wave) {
   if (wave < 10) return "small";
   if (wave < 20) return "mid";
   return "large";
+}
+
+function getBossHp(wave, tier) {
+  const scale = Math.sqrt(wave);
+  if (tier === "small") return Math.round(12 + wave * 0.7 + scale * 2.5);
+  if (tier === "mid") return Math.round(42 + wave * 2.2 + scale * 5);
+  return Math.round(96 + wave * 3.6 + scale * 9);
 }
 
 function updateBoss(dt) {
@@ -716,7 +731,7 @@ function startMission() {
   if (state.boss) {
     state.mission = {
       type: "boss",
-      label: "Defeat the reactor",
+      label: "リアクター撃破",
       target: 1,
       progress: 0,
       reward: clamp(28 + Math.floor(state.wave / 5) * 4, 28, 1200),
@@ -748,7 +763,7 @@ function updateMission(type, amount = 1, absolute = false) {
   state.score += mission.reward * 20;
   state.best = Math.max(state.best, state.score);
   state.bgPulse = 1;
-  addPopup(`MISSION +${mission.reward}C`, GAME_WIDTH / 2, 190, "#9fffc9", 1.25);
+  addPopup(`ミッション +${mission.reward}コイン`, GAME_WIDTH / 2, 190, "#9fffc9", 1.25);
   burst(GAME_WIDTH / 2, 190, "#9fffc9", 34, 4.4);
 }
 
@@ -790,35 +805,6 @@ function updatePopups(dt) {
 
 function checkCollisions() {
   const paddleRect = getPaddleRect();
-  for (const ball of state.balls) {
-    if (!ball.launched) continue;
-    if (circleRect(ball, paddleRect) && ball.vy > 0) {
-      const hit = (ball.x - state.paddle.x) / (state.paddle.width / 2);
-      const angle = -Math.PI / 2 + clamp(hit, -1, 1) * 1.08;
-      const speed = Math.max(getBallSpeed(), Math.hypot(ball.vx, ball.vy));
-      ball.vx = Math.cos(angle) * speed;
-      ball.vy = Math.sin(angle) * speed;
-      ball.y = paddleRect.y - ball.r - 1;
-      playSfx("paddle");
-      burst(ball.x, ball.y, "#49c7ff", 5, 2.5);
-    }
-
-    if (state.boss && circleRect(ball, state.boss)) {
-      const hitBoss = state.boss;
-      damageBoss(1, ball.x, ball.y);
-      if (state.effects.bomb > 0) explodeAt(ball.x, ball.y, 64, 1);
-      if (state.effects.pierce <= 0) reflectBallFromRect(ball, hitBoss);
-    }
-
-    for (const brick of [...state.bricks]) {
-      if (!circleRect(ball, brick)) continue;
-      damageBrick(brick, 1, ball.x, ball.y);
-      if (state.effects.bomb > 0) explodeAt(ball.x, ball.y, 58, 1);
-      if (state.effects.pierce <= 0) reflectBallFromRect(ball, brick);
-      break;
-    }
-  }
-
   for (const item of [...state.items]) {
     if (circleRect(item, paddleRect)) {
       state.items.splice(state.items.indexOf(item), 1);
@@ -831,11 +817,45 @@ function checkCollisions() {
       state.coinDrops.splice(state.coinDrops.indexOf(coin), 1);
       state.coins += coin.value;
       updateMission("coin", coin.value);
-      addPopup(`+${coin.value} COIN`, coin.x, coin.y, "#ffe668", 0.72);
+      addPopup(`+${coin.value}コイン`, coin.x, coin.y, "#ffe668", 0.72);
       playSfx("coin");
       burst(coin.x, coin.y, "#ffe668", 16, 3);
     }
   }
+}
+
+function checkBallSolidCollisions(ball) {
+  const paddleRect = getPaddleRect();
+  if (circleRect(ball, paddleRect) && ball.vy > 0) {
+    const hit = (ball.x - state.paddle.x) / (state.paddle.width / 2);
+    const angle = -Math.PI / 2 + clamp(hit, -1, 1) * 1.08;
+    const speed = Math.max(getBallSpeed(), Math.hypot(ball.vx, ball.vy));
+    ball.vx = Math.cos(angle) * speed;
+    ball.vy = Math.sin(angle) * speed;
+    ball.y = paddleRect.y - ball.r - 1;
+    playSfx("paddle");
+    burst(ball.x, ball.y, "#49c7ff", 5, 2.5);
+    return;
+  }
+
+  if (state.boss && circleRect(ball, state.boss)) {
+    const hitBoss = { ...state.boss };
+    damageBoss(1, ball.x, ball.y);
+    if (state.effects.bomb > 0) explodeAt(ball.x, ball.y, 64, 1);
+    if (state.effects.pierce <= 0) reflectBallFromRect(ball, hitBoss);
+    return;
+  }
+
+  const contacts = state.bricks
+    .filter((brick) => circleRect(ball, brick))
+    .sort((a, b) => rectContactDepth(ball, b) - rectContactDepth(ball, a))
+    .slice(0, state.effects.pierce > 0 ? 4 : 2);
+
+  if (contacts.length === 0) return;
+  const primary = contacts[0];
+  for (const brick of contacts) damageBrick(brick, 1, ball.x, ball.y);
+  if (state.effects.bomb > 0) explodeAt(ball.x, ball.y, 58, 1);
+  if (state.effects.pierce <= 0) reflectBallFromRect(ball, primary);
 }
 
 function damageBoss(amount, x, y) {
@@ -1024,17 +1044,17 @@ function drawBackground() {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-  const t = performance.now() * 0.001;
+  const t = performance.now() * 0.00038;
   ctx.globalAlpha = fever ? 0.38 : bossTint ? 0.32 + pulse * 0.18 : 0.26 + pulse * 0.14;
   ctx.strokeStyle = fever ? "#ffe48c" : bossTint ? "#7a3034" : "#34505d";
   ctx.lineWidth = 1.1;
   for (let y = 60; y < GAME_HEIGHT; y += 34) {
     ctx.beginPath();
-    const rowDrift = Math.sin(y * 0.037 + t * 0.95) * (3.4 + pulse * 4);
+    const rowDrift = Math.sin(y * 0.037 + t * 0.7) * (2.2 + pulse * 2.5);
     const rowPhase = Math.sin(y * 0.011) * 3.4;
     for (let x = 0; x <= GAME_WIDTH; x += 10) {
-      const soft = Math.sin(x * 0.024 + y * 0.033 + t * 1.8 + rowPhase) * (5.8 + pulse * 5);
-      const lazy = Math.sin(x * 0.011 - y * 0.019 + t * 0.72) * 3.4;
+      const soft = Math.sin(x * 0.024 + y * 0.033 + t + rowPhase) * (4.8 + pulse * 3.2);
+      const lazy = Math.sin(x * 0.011 - y * 0.019 + t * 0.34) * 2.4;
       const waveY = y + rowDrift + soft + lazy;
       if (x === 0) ctx.moveTo(x, waveY);
       else ctx.lineTo(x, waveY);
@@ -1108,12 +1128,12 @@ function drawEffectTimers() {
 
 function drawHudV2() {
   const entries = [
-    ["SCORE", state.score],
-    ["BEST", state.best],
+    ["スコア", state.score],
+    ["ベスト", state.best],
     ["WAVE", state.wave],
-    ["LIFE", state.lives],
-    ["COIN", state.coins],
-    ["COMBO", state.combo]
+    ["ライフ", state.lives],
+    ["コイン", state.coins],
+    ["コンボ", state.combo]
   ];
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
@@ -1137,13 +1157,13 @@ function drawHudV2() {
 
 function drawEffectTimersV2() {
   const active = [];
-  if (state.effects.wide > 0) active.push(["WIDE", state.effects.wide, "#49c7ff"]);
-  if (state.effects.laser > 0) active.push(["LASER", state.effects.laser, "#49c7ff"]);
-  if (state.effects.pierce > 0) active.push(["PIERCE", state.effects.pierce, "#ffffff"]);
-  if (state.effects.bomb > 0) active.push(["BOMB", state.effects.bomb, "#ff9a72"]);
-  if (state.effects.slow > 0) active.push(["SLOW", state.effects.slow, "#9fffc9"]);
+  if (state.effects.wide > 0) active.push(["ワイド", state.effects.wide, "#49c7ff"]);
+  if (state.effects.laser > 0) active.push(["レーザー", state.effects.laser, "#49c7ff"]);
+  if (state.effects.pierce > 0) active.push(["貫通", state.effects.pierce, "#ffffff"]);
+  if (state.effects.bomb > 0) active.push(["爆弾", state.effects.bomb, "#ff9a72"]);
+  if (state.effects.slow > 0) active.push(["スロー", state.effects.slow, "#9fffc9"]);
   active.forEach(([label, value, color], index) => {
-    const y = 63 + index * 14;
+    const y = 82 + index * 13;
     ctx.fillStyle = color;
     ctx.font = "800 10px Segoe UI, Arial";
     ctx.fillText(`${label} ${value.toFixed(1)}s`, 12, y);
@@ -1151,16 +1171,16 @@ function drawEffectTimersV2() {
   if (state.effects.shield > 0) {
     ctx.fillStyle = "#6dff8f";
     ctx.font = "900 11px Segoe UI, Arial";
-    ctx.fillText(`SHIELD x${state.effects.shield}`, 302, 58);
+    ctx.fillText(`シールド x${state.effects.shield}`, 302, 82);
   }
 }
 
 function drawMissionPanel() {
   if (!state.mission) return;
   const mission = state.mission;
-  const x = state.boss ? 214 : 12;
-  const y = 61;
-  const w = state.boss ? 194 : 196;
+  const x = 12;
+  const y = 54;
+  const w = 336;
   const pct = clamp(mission.progress / mission.target, 0, 1);
   ctx.save();
   ctx.fillStyle = "rgba(5, 8, 12, 0.58)";
@@ -1171,9 +1191,9 @@ function drawMissionPanel() {
   ctx.fill();
   ctx.fillStyle = mission.done ? "#9fffc9" : "#f7fbff";
   ctx.font = "800 9px Segoe UI, Arial";
-  ctx.fillText(`MISSION: ${mission.label}`, x + 7, y + 4);
+  ctx.fillText(`ミッション: ${mission.label}`, x + 7, y + 4);
   ctx.textAlign = "right";
-  ctx.fillText(`${Math.min(mission.progress, mission.target)}/${mission.target} +${mission.reward}C`, x + w - 7, y + 4);
+  ctx.fillText(`${Math.min(mission.progress, mission.target)}/${mission.target} +${mission.reward}コイン`, x + w - 7, y + 4);
   ctx.restore();
 }
 
@@ -1182,18 +1202,18 @@ function drawDebugLabel() {
   ctx.textAlign = "right";
   ctx.fillStyle = "rgba(255,230,104,0.82)";
   ctx.font = "900 9px Segoe UI, Arial";
-  ctx.fillText("DEBUG Shift+W wave / Shift+C coins", GAME_WIDTH - 12, 648);
+  ctx.fillText("開発: Shift+WでWAVE / Shift+Cでコイン", GAME_WIDTH - 12, 598);
   ctx.restore();
 }
 
 function drawBossHp() {
   const pct = clamp(state.boss.hp / state.boss.maxHp, 0, 1);
   ctx.fillStyle = "rgba(255,255,255,0.12)";
-  ctx.fillRect(42, 76, 336, 9);
+  ctx.fillRect(42, 84, 336, 9);
   ctx.fillStyle = bossColor();
   ctx.shadowColor = bossColor();
   ctx.shadowBlur = 14;
-  ctx.fillRect(42, 76, 336 * pct, 9);
+  ctx.fillRect(42, 84, 336 * pct, 9);
   ctx.shadowBlur = 0;
 }
 
@@ -1598,7 +1618,7 @@ function scoreMultiplier() {
 
 function getBallSpeed() {
   const comboBoost = Math.min(0.8, state.combo * 0.006);
-  const base = INITIAL_BALL_SPEED + Math.min(2.8, state.wave * 0.11) + comboBoost;
+  const base = INITIAL_BALL_SPEED + Math.min(2.2, Math.log2(state.wave + 1) * 0.24) + comboBoost;
   return state.effects.slow > 0 ? base * 0.76 : base;
 }
 
@@ -1626,6 +1646,13 @@ function circleRect(circle, rect) {
   const dx = circle.x - closestX;
   const dy = circle.y - closestY;
   return dx * dx + dy * dy <= circle.r * circle.r;
+}
+
+function rectContactDepth(circle, rect) {
+  const closestX = clamp(circle.x, rect.x, rect.x + rect.w);
+  const closestY = clamp(circle.y, rect.y, rect.y + rect.h);
+  const distanceToRect = Math.hypot(circle.x - closestX, circle.y - closestY);
+  return circle.r - distanceToRect;
 }
 
 function rectsOverlap(a, b, padding = 0) {
@@ -1770,13 +1797,13 @@ function itemName(type) {
 
 function itemNameV2(type) {
   return {
-    multi: "MULTI",
-    wide: "WIDE",
-    laser: "LASER",
-    pierce: "PIERCE",
-    bomb: "BOMB",
-    shield: "SHIELD",
-    slow: "SLOW"
+    multi: "マルチ",
+    wide: "ワイド",
+    laser: "レーザー",
+    pierce: "貫通",
+    bomb: "爆弾",
+    shield: "シールド",
+    slow: "スロー"
   }[type] || type;
 }
 
@@ -1838,10 +1865,10 @@ function gameOver() {
   }
   state.best = Number(localStorage.getItem(STORAGE_KEY) || state.best);
   gameOverStats.innerHTML = `
-    <dt>Score</dt><dd>${formatHudValue(state.score)}</dd>
-    <dt>Best</dt><dd>${formatHudValue(state.best)}</dd>
-    <dt>Wave</dt><dd>${state.wave}</dd>
-    <dt>Coins</dt><dd>${state.coins}</dd>
+    <dt>スコア</dt><dd>${formatHudValue(state.score)}</dd>
+    <dt>ベスト</dt><dd>${formatHudValue(state.best)}</dd>
+    <dt>到達WAVE</dt><dd>${state.wave}</dd>
+    <dt>コイン</dt><dd>${state.coins}</dd>
   `;
   setOverlay(gameOverOverlay, true);
   updateButtons();
@@ -1855,7 +1882,7 @@ function updateButtons() {
   shopShieldButton.disabled = !canBuy() || state.coins < SHIELD_COST || state.effects.shield >= 3;
   shopWideButton.disabled = !canBuy() || state.coins < WIDE_COST;
   shopMultiButton.disabled = !canBuy() || state.coins < MULTI_COST || state.balls.length >= MAX_BALLS;
-  shopCoinText.textContent = `Coins ${state.coins}`;
+  shopCoinText.textContent = `所持コイン ${state.coins}`;
   pauseButton.disabled = state.gameEnded;
   pauseButton.textContent = state.paused ? ">" : "||";
 }

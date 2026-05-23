@@ -1,45 +1,46 @@
 # Break Reactor
 
-Break Reactor is a compact endless brick-breaker for the browser. It runs as static files: no build step, no dependencies, and it can be hosted directly on GitHub Pages.
+Break Reactor は、ブラウザだけで遊べるエンドレス型のブロック崩しです。ビルド不要、外部ライブラリ不要で、GitHub Pages にそのまま置けます。
 
-## Play
+## 起動方法
 
-Open `index.html`, or serve the folder with any static server.
+`index.html` を開くか、静的サーバーで配信します。
 
 ```bash
 python -m http.server 4173 --bind 127.0.0.1
 ```
 
-Then open `http://127.0.0.1:4173/`.
+起動後、`http://127.0.0.1:4173/` を開きます。
 
-## Controls
+## 操作
 
-- Mouse / touch: move the paddle
-- Click / tap / Space: launch the ball
-- `P` or `Esc`: pause
-- `R`: restart
-- `Shift+W`: jump to a wave for development
-- `Shift+C`: add 100 coins for development
+- マウス / タッチ: パドル移動
+- クリック / タップ / Space: ボール発射
+- `P` / `Esc`: 一時停止
+- `R`: リスタート
+- `Shift+W`: 開発用のWAVEジャンプ
+- `Shift+C`: 開発用にコイン+100
 
-## Current Design
+## 遊びの要素
 
-- Waves scale up to wave 10000, with speed and HUD formatting capped so the display stays readable.
-- Blue blocks are glass-like one-hit blocks.
-- Wood, stone, and metal blocks appear gradually as wave difficulty rises.
-- Boss waves appear every 5 waves. Later bosses move horizontally and fire rockets.
-- Missions give short optional goals, such as breaking blocks, collecting coins, reaching combo counts, or defeating a boss.
-- The background reacts to fever, boss warning, boss hits, and mission completion.
+- WAVE 10000 まで表示と速度が破綻しないように調整しています。
+- 青ブロックはガラス風の通常ブロックです。
+- WAVE が進むと木、石、金属ブロックが段階的に混ざります。
+- 5 WAVE ごとにボスが出ます。後半のボスは横に動きます。
+- ミッションを達成するとコインとスコアがもらえます。
+- 背景はじんわり動き、ボス接近・被弾・ミッション達成に反応します。
+- マルチアイテムは重ねがけできます。上限は最大30ボールです。
 
-## Debug Helpers
+## 開発用デバッグ
 
-URL parameters:
+URL パラメータ:
 
 ```text
 ?debug=1&wave=50&coins=200
 #debug=1&wave=50&coins=200
 ```
 
-Console API:
+ブラウザコンソール:
 
 ```js
 BreakReactorDebug.jumpToWave(100);
@@ -48,7 +49,11 @@ BreakReactorDebug.clearStage();
 BreakReactorDebug.state;
 ```
 
-## Files
+## 仕様書
+
+[SPEC.md](./SPEC.md) にゲーム仕様、調整方針、デバッグ方法を書いています。新しい機能を足す前にここへ仕様を書き、実装後に実際の挙動とずれていないか確認する使い方を想定しています。
+
+## ファイル構成
 
 ```text
 index.html

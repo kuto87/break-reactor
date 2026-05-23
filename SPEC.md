@@ -1,69 +1,106 @@
-# Break Reactor Specification
+# Break Reactor 仕様書
 
-## Goal
+## このファイルの使い方
 
-Create a polished endless brick-breaker that stays readable and debuggable through very high waves, currently planned up to wave 10000.
+`SPEC.md` は、ゲームの仕様と調整方針を残すためのメモです。
 
-## Core Loop
+1. 新しい機能を入れる前に、目的と挙動をここへ短く書きます。
+2. 実装したあと、実際の挙動が仕様とずれていないか確認します。
+3. バランス調整をしたら、数値や意図を更新します。
+4. README は遊ぶ人向け、SPEC は開発・調整する人向けとして分けます。
 
-1. Move the paddle to return balls.
-2. Break enough blocks to advance the wave.
-3. Collect coins and temporary items.
-4. Spend coins on in-run upgrades.
-5. Survive boss waves every 5 waves.
-6. Complete optional missions for coin and score bonuses.
+## 目的
 
-## Difficulty Scaling
+WAVE 10000 まで進んでも、表示・速度・難易度・デバッグ性が破綻しないブロック崩しにすること。
 
-- Normal waves grow by row count and fill rate.
-- Block toughness is probability-based instead of forcing every block to harden at once.
-- Wood starts appearing after early waves.
-- Stone appears later and at a lower rate.
-- Metal appears in late waves and remains capped.
-- Ball speed has a cap so wave 10000 remains playable.
-- HUD numbers abbreviate large scores to prevent overflow.
+## 基本ループ
 
-## Blocks
+1. パドルでボールを返す。
+2. ブロックを壊してWAVEを進める。
+3. コインと一時アイテムを集める。
+4. コインでプレイ中強化を買う。
+5. 5 WAVE ごとのボスを倒す。
+6. ミッションを達成して追加報酬を得る。
 
-- Glass: default blue block with glossy highlights.
-- Wood: 2-hit block with wood grain and knots.
-- Stone: 3-hit block with cracked texture.
-- Metal: 4-hit block with panel lines and rivets.
-- Special types can drop coins, items, or explode.
+## 難易度
 
-## Bosses
+- ブロックの硬さは一気に上げず、WAVE に応じた確率で混ぜる。
+- 青ブロック中心から、木、石、金属が段階的に混ざる。
+- ボール速度は対数的に伸ばし、WAVE 10000 でも速すぎないようにする。
+- ボスHPはWAVEに応じて増えるが、線形だけでなく平方根の補正で急激な破綻を避ける。
+- HUD は大きい数字を `K` / `M` 表示にして枠内へ収める。
 
-- Boss waves occur every 5 waves.
-- Small bosses are mostly static.
-- Mid and large bosses move horizontally with wave-scaled amplitude and speed.
-- Boss hits pulse the background so the playfield reacts to the target.
-- Boss collision uses the same push-out reflection as blocks to avoid the ball being swallowed.
+## ブロック
 
-## Missions
+- 青: ガラス風の通常ブロック。
+- 木: 2回相当の硬さ。木目と節を描く。
+- 石: 3回相当の硬さ。割れ線を描く。
+- 金属: 4回相当の硬さ。パネル線とリベットを描く。
+- ボールが2つのブロックに同時接触した場合、最大2個まで同時に削る。
+- ブロック間や壁との隙間は、見た目上ボールが通れない場所をすり抜けないよう、移動を細かく刻んで判定する。
 
-One mission is active per wave:
+## アイテム
 
-- Break blocks
-- Collect coins
-- Reach a combo count
-- Break special blocks
-- Defeat the boss
+- マルチ: ボールを2個追加する。重ねがけ可能。最大30ボール。
+- ワイド: パドルを一定時間広げる。
+- レーザー: パドルから一定時間レーザーを撃つ。
+- 貫通: ブロック貫通。
+- 爆弾: 衝突時に範囲ダメージ。
+- シールド: ボール落下を防ぐ。
+- スロー: ボール速度を下げる。
 
-Rewards grant coins and score. Mission progress is shown under the HUD.
+## ボス
 
-## Debugging
+- 5 WAVE ごとに出現する。
+- 序盤ボスはほぼ固定。
+- 中盤以降のボスは横移動する。
+- ボスにボールがめり込まないよう、ブロックと同じ押し戻し反射を使う。
+- ボス被弾時は背景が軽く反応する。
 
-Development controls are intentionally built in:
+## ミッション
 
-- `Shift+W`: prompt and jump to a wave
-- `Shift+C`: add coins
-- URL parameters: `?debug=1&wave=50&coins=200`
-- Console API: `BreakReactorDebug`
+WAVEごとに1つ表示する。
 
-These helpers should remain available in static hosting builds because they do not require a build pipeline.
+- ブロック破壊
+- コイン回収
+- コンボ到達
+- 特殊ブロック破壊
+- リアクター撃破
 
-## Known Constraints
+ミッション表示は下部の強化ボタンに近い位置へ置き、ブロックやボスHPバーと被らないようにする。
 
-- The game is canvas-rendered and tuned for a 420 x 720 logical viewport.
-- There is no asset pipeline; visual polish is drawn procedurally in `main.js`.
-- No external libraries are used.
+## 背景
+
+- 常時じんわり動く。
+- ボス接近、ボス被弾、ミッション達成で色やリングが少し反応する。
+- 主役はボールとブロックなので、背景の移動速度は控えめにする。
+
+## デバッグ
+
+URL:
+
+```text
+?debug=1&wave=50&coins=200
+#debug=1&wave=50&coins=200
+```
+
+キー:
+
+- `Shift+W`: WAVE指定ジャンプ
+- `Shift+C`: コイン+100
+
+コンソール:
+
+```js
+BreakReactorDebug.jumpToWave(100);
+BreakReactorDebug.giveCoins(500);
+BreakReactorDebug.clearStage();
+BreakReactorDebug.state;
+```
+
+## 制約
+
+- 論理画面は 420 x 720。
+- Canvas で描画する。
+- 外部ライブラリは使わない。
+- アセットパイプラインは持たず、ブロックや背景は `main.js` 内で手続き的に描く。

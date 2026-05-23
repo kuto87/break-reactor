@@ -27,6 +27,15 @@ const WIDE_COST = 18;
 const MULTI_COST = 24;
 const STORAGE_KEY = "breakReactorBestScore";
 const SFX_VOLUME = 0.22;
+const MAX_PARTICLES = 180;
+const MAX_EXPLOSION_TARGETS = 12;
+const MAX_EXPLOSIONS_PER_FRAME = 3;
+const SFX_COOLDOWN = {
+  chip: 0.018,
+  break: 0.035,
+  explosion: 0.09,
+  laser: 0.035
+};
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -91,7 +100,8 @@ const materialStyles = {
 const audio = {
   ctx: null,
   master: null,
-  enabled: false
+  enabled: false,
+  lastPlayed: {}
 };
 
 let lastTouchEnd = 0;
@@ -138,6 +148,7 @@ const state = {
   mission: null,
   missionStreak: 0,
   debugMode: false,
+  explosionsThisFrame: 0,
   effects: {
     wide: 0,
     laser: 0,
@@ -326,6 +337,7 @@ function gameLoop(time) {
 }
 
 function update(dt) {
+  state.explosionsThisFrame = 0;
   if (state.hitStop > 0) {
     state.hitStop -= dt;
     updateParticles(dt * 0.35);
@@ -615,7 +627,7 @@ function canPlaceBrick(x, y, w, h) {
 
 function damageBrick(brick, amount = 1, sourceX = brick.x + brick.w / 2, sourceY = brick.y + brick.h / 2) {
   brick.hp -= amount;
-  burst(sourceX, sourceY, brickStyles[brick.type].color, 5, 2);
+  burst(sourceX, sourceY, brickStyles[brick.type].color, 3, 1.8);
   if (brick.hp <= 0) destroyBrick(brick, sourceX, sourceY);
   else playSfx("chip");
 }
@@ -640,7 +652,7 @@ function destroyBrick(brick, x = brick.x + brick.w / 2, y = brick.y + brick.h / 
     addPopup("FEVER", GAME_WIDTH / 2, 250, "#ff3df2", 1.7);
   }
 
-  burst(x, y, brickStyles[brick.type].color, brick.type === "bomb" ? 34 : 14, brick.type === "bomb" ? 5.2 : 3.2);
+  burst(x, y, brickStyles[brick.type].color, brick.type === "bomb" ? 18 : 9, brick.type === "bomb" ? 4.8 : 2.8);
   addPopup(`+${gain}`, x, y, "#ffffff", 0.6);
   state.shake = Math.max(state.shake, brick.type === "bomb" ? 10 : 3);
   state.hitStop = Math.max(state.hitStop, brick.type === "bomb" ? 0.055 : 0.018);
@@ -846,16 +858,35 @@ function checkBallSolidCollisions(ball) {
     return;
   }
 
-  const contacts = state.bricks
-    .filter((brick) => circleRect(ball, brick))
-    .sort((a, b) => rectContactDepth(ball, b) - rectContactDepth(ball, a))
-    .slice(0, state.effects.pierce > 0 ? 4 : 2);
+  const contacts = findBallBrickContacts(ball, state.effects.pierce > 0 ? 4 : 2);
 
   if (contacts.length === 0) return;
   const primary = contacts[0];
   for (const brick of contacts) damageBrick(brick, 1, ball.x, ball.y);
   if (state.effects.bomb > 0) explodeAt(ball.x, ball.y, 58, 1);
   if (state.effects.pierce <= 0) reflectBallFromRect(ball, primary);
+}
+
+function findBallBrickContacts(ball, limit) {
+  const contacts = [];
+  const minY = ball.y - ball.r - BRICK_HEIGHT;
+  const maxY = ball.y + ball.r;
+  for (const brick of state.bricks) {
+    if (brick.y > maxY || brick.y + brick.h < minY) continue;
+    if (!circleRect(ball, brick)) continue;
+    const depth = rectContactDepth(ball, brick);
+    let inserted = false;
+    for (let i = 0; i < contacts.length; i += 1) {
+      if (depth > contacts[i].depth) {
+        contacts.splice(i, 0, { brick, depth });
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) contacts.push({ brick, depth });
+    if (contacts.length > limit) contacts.length = limit;
+  }
+  return contacts.map((contact) => contact.brick);
 }
 
 function damageBoss(amount, x, y) {
@@ -1221,8 +1252,8 @@ function drawBricks() {
   for (const brick of state.bricks) {
     const material = getBrickMaterial(brick);
     ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.45)";
-    ctx.shadowBlur = 8;
+    ctx.shadowColor = "rgba(0,0,0,0.32)";
+    ctx.shadowBlur = state.bricks.length > 48 ? 0 : 5;
     const grad = ctx.createLinearGradient(brick.x, brick.y, brick.x, brick.y + brick.h);
     grad.addColorStop(0, material.light);
     grad.addColorStop(0.48, material.color);
@@ -1481,8 +1512,6 @@ function drawParticles() {
     ctx.save();
     ctx.globalAlpha = clamp(p.life / p.maxLife, 0, 1);
     ctx.fillStyle = p.color;
-    ctx.shadowColor = p.color;
-    ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
     ctx.fill();
@@ -1531,12 +1560,23 @@ function advanceWave() {
 }
 
 function explodeAt(x, y, radius, damage) {
-  burst(x, y, "#ff8b39", 28, 5.8);
-  state.shake = Math.max(state.shake, 8);
-  for (const brick of [...state.bricks]) {
+  if (state.explosionsThisFrame >= MAX_EXPLOSIONS_PER_FRAME) {
+    burst(x, y, "#ff8b39", 5, 3.4);
+    return;
+  }
+  state.explosionsThisFrame += 1;
+  burst(x, y, "#ff8b39", 16, 5.2);
+  state.shake = Math.max(state.shake, 6);
+  const targets = [];
+  for (const brick of state.bricks) {
     const cx = brick.x + brick.w / 2;
     const cy = brick.y + brick.h / 2;
-    if (distance(x, y, cx, cy) <= radius) damageBrick(brick, damage, cx, cy);
+    const dist = distance(x, y, cx, cy);
+    if (dist <= radius) targets.push({ brick, cx, cy, dist });
+  }
+  targets.sort((a, b) => a.dist - b.dist);
+  for (const target of targets.slice(0, MAX_EXPLOSION_TARGETS)) {
+    damageBrick(target.brick, damage, target.cx, target.cy);
   }
   if (state.boss && distance(x, y, state.boss.x + state.boss.w / 2, state.boss.y + state.boss.h / 2) <= radius + 110) {
     damageBoss(damage, x, y);
@@ -1587,7 +1627,9 @@ function keepBallAnglePlayable(ball) {
 }
 
 function burst(x, y, color, count, force) {
-  for (let i = 0; i < count; i += 1) {
+  const available = Math.max(0, MAX_PARTICLES - state.particles.length);
+  const actualCount = Math.min(count, available);
+  for (let i = 0; i < actualCount; i += 1) {
     const a = Math.random() * Math.PI * 2;
     const s = randomRange(0.4, force);
     state.particles.push({
@@ -1707,6 +1749,9 @@ function unlockAudio() {
 function playSfx(type) {
   if (!audio.enabled || !audio.ctx) return;
   const now = audio.ctx.currentTime;
+  const cooldown = SFX_COOLDOWN[type] || 0;
+  if (cooldown > 0 && now - (audio.lastPlayed[type] || 0) < cooldown) return;
+  audio.lastPlayed[type] = now;
   const sounds = {
     paddle: [[260, 0.045, "triangle", 0.48], [520, 0.035, "sine", 0.18]],
     chip: [[180, 0.035, "square", 0.18]],
